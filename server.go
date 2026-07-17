@@ -51,7 +51,7 @@ func ServeSite(ctx context.Context, options *ServeSiteOptions) error {
 			return groupCtx
 		},
 		Handler: handler{
-			rootPath:          outDir,
+			rootPath:          options.GenerateOptions.outputDir(),
 			keepHTMLExtension: options.GenerateOptions.KeepHTMLExtension,
 			state:             state,
 		},

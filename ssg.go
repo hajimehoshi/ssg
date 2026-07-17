@@ -12,12 +12,20 @@ import (
 )
 
 const (
-	outDir = "dist"
-	inDir  = "contents"
+	defaultInputDir  = "content"
+	defaultOutputDir = "public"
 )
 
 // GenerateOptions is options for Generate.
 type GenerateOptions struct {
+	// InputDir is the directory containing the source files. The default is
+	// "content".
+	InputDir string
+
+	// OutputDir is the directory to generate the site into. The default is
+	// "public".
+	OutputDir string
+
 	// SiteName is the name of the website, used e.g. in page titles.
 	SiteName string
 
@@ -36,16 +44,32 @@ func Generate(options *GenerateOptions) error {
 		return fmt.Errorf("ssg: SiteName must not be empty")
 	}
 
-	if err := os.RemoveAll(outDir); err != nil {
+	inputDir := options.inputDir()
+	outputDir := options.outputDir()
+	if err := os.RemoveAll(outputDir); err != nil {
 		return err
 	}
-	if err := copyNonHTMLFiles(outDir, inDir); err != nil {
+	if err := copyNonHTMLFiles(outputDir, inputDir); err != nil {
 		return err
 	}
-	if err := generateHTMLs(outDir, inDir, options); err != nil {
+	if err := generateHTMLs(outputDir, inputDir, options); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (o *GenerateOptions) inputDir() string {
+	if o.InputDir != "" {
+		return o.InputDir
+	}
+	return defaultInputDir
+}
+
+func (o *GenerateOptions) outputDir() string {
+	if o.OutputDir != "" {
+		return o.OutputDir
+	}
+	return defaultOutputDir
 }
 
 func isIgnoredFile(path string) bool {
