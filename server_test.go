@@ -4,11 +4,17 @@
 package ssg_test
 
 import (
+	"context"
+	"errors"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/hajimehoshi/ssg"
 )
@@ -141,4 +147,170 @@ func TestHandler(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestServeSite(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeContentSite(t)
+
+	addr := unusedLocalAddr(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- ssg.ServeSite(ctx, &ssg.ServeSiteOptions{
+			Addr: addr,
+			GenerateOptions: ssg.GenerateOptions{
+				SiteName: "Test",
+			},
+		})
+	}()
+
+	url := "http://" + addr + "/"
+	waitForHTTPContent(t, url, "one")
+	waitForServedRegeneration(t, filepath.Join("contents", "index.html"), url)
+
+	cancel()
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("ServeSite: got: %v, want: %v", err, context.Canceled)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("ServeSite did not return after its context was canceled")
+	}
+
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		t.Fatalf("ServeSite did not release its address: %v", err)
+	}
+	l.Close()
+}
+
+func TestServeSiteStopsWhenRegenerationFails(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeContentSite(t)
+
+	addr := unusedLocalAddr(t)
+	ctx := t.Context()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- ssg.ServeSite(ctx, &ssg.ServeSiteOptions{
+			Addr: addr,
+			GenerateOptions: ssg.GenerateOptions{
+				SiteName: "Test",
+			},
+		})
+	}()
+	waitForHTTPContent(t, "http://"+addr+"/", "one")
+
+	if err := os.WriteFile(filepath.Join("contents", "_tmpl.html"), []byte("{{"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("ServeSite succeeded after regeneration failed")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("ServeSite did not return after regeneration failed")
+	}
+
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		t.Fatalf("ServeSite did not stop the HTTP server: %v", err)
+	}
+	l.Close()
+}
+
+func TestServeSiteStopsWatchingWhenServerFails(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeContentSite(t)
+
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+
+	err = ssg.ServeSite(context.Background(), &ssg.ServeSiteOptions{
+		Addr: l.Addr().String(),
+		GenerateOptions: ssg.GenerateOptions{
+			SiteName: "Test",
+		},
+	})
+	if err == nil {
+		t.Fatal("ServeSite succeeded when its address was already in use")
+	}
+	var opErr *net.OpError
+	if !errors.As(err, &opErr) {
+		t.Errorf("ServeSite: got error type %T, want *net.OpError", err)
+	}
+}
+
+func writeContentSite(t *testing.T) {
+	t.Helper()
+
+	if err := os.Mkdir("contents", 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("contents", "_tmpl.html"), []byte("<html><body>{{.Page.Content}}</body></html>"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("contents", "index.html"), []byte("<p>one</p>"), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func unusedLocalAddr(t *testing.T) string {
+	t.Helper()
+
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := l.Addr().String()
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return addr
+}
+
+func waitForHTTPContent(t *testing.T, url, content string) {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(url)
+		if err == nil {
+			body, readErr := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if readErr == nil && resp.StatusCode == http.StatusOK && strings.Contains(string(body), content) {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("%s did not serve content containing %q", url, content)
+}
+
+func waitForServedRegeneration(t *testing.T, contentPath, url string) {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := os.WriteFile(contentPath, []byte("<p>two</p>"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.Get(url)
+		if err == nil {
+			body, readErr := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if readErr == nil && resp.StatusCode == http.StatusOK && strings.Contains(string(body), "two") {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("%s was not regenerated and served", contentPath)
 }
