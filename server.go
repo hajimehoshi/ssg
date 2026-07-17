@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -43,16 +43,21 @@ func ServeSite(ctx context.Context, options *ServeSiteOptions) error {
 		return err
 	}
 
+	group, groupCtx := errgroup.WithContext(ctx)
+	state := newServeState()
 	server := &http.Server{
 		Addr: options.Addr,
+		BaseContext: func(net.Listener) context.Context {
+			return groupCtx
+		},
 		Handler: handler{
 			rootPath:          outDir,
 			keepHTMLExtension: options.GenerateOptions.KeepHTMLExtension,
+			state:             state,
 		},
 	}
-	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(func() error {
-		return watch(groupCtx, &options.GenerateOptions)
+		return watch(groupCtx, &options.GenerateOptions, state)
 	})
 	group.Go(func() error {
 		err := server.ListenAndServe()
@@ -71,12 +76,29 @@ func ServeSite(ctx context.Context, options *ServeSiteOptions) error {
 type handler struct {
 	rootPath          string
 	keepHTMLExtension bool
+	state             *serveState
 }
 
 func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == notifyPath {
+		h.notify(w, r)
+		return
+	}
+	// Keep the generated files and their generation stable while the response
+	// reads them.
+	h.state.withSite(func(gen uint64) {
+		h.serveSite(w, r, gen)
+	})
+}
+
+func (h handler) serveSite(w http.ResponseWriter, r *http.Request, gen uint64) {
+	if strings.HasSuffix(r.URL.Path, "/index.html") {
+		localRedirect(w, r, "./")
+		return
+	}
+
 	// The generator omits the .html extension from page URLs by default, so the
 	// .html URL must not serve the page at a second URL.
-	// http.ServeFile already redirects .../index.html.
 	if !h.keepHTMLExtension && strings.HasSuffix(r.URL.Path, ".html") && !strings.HasSuffix(r.URL.Path, "/index.html") {
 		u := *r.URL
 		u.Path = strings.TrimSuffix(u.Path, ".html")
@@ -92,7 +114,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if h.keepHTMLExtension {
-			h.notFound(w, r)
+			h.notFound(w, r, gen)
 			return
 		}
 		// The generator omits the .html extension from page URLs by
@@ -101,7 +123,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f, err = os.Stat(path)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
-				h.notFound(w, r)
+				h.notFound(w, r, gen)
 				return
 			}
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -109,7 +131,6 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		// The generator advertises a directory's index page as the directory
 		// itself, so .../index must not serve the page at a second URL.
-		// http.ServeFile already redirects .../index.html.
 		if strings.HasSuffix(r.URL.Path, "/index") {
 			dir := "./"
 			if r.URL.RawQuery != "" {
@@ -122,9 +143,10 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if f.IsDir() {
 		path = filepath.Join(path, "index.html")
-		if _, err := os.Stat(path); err != nil {
+		f, err = os.Stat(path)
+		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
-				h.notFound(w, r)
+				h.notFound(w, r, gen)
 				return
 			}
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -133,18 +155,33 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if filepath.Ext(path) == ".html" {
+		h.serveHTML(w, r, path, f, gen)
+		return
+	}
 	http.ServeFile(w, r, path)
 }
 
-func (h handler) notFound(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotFound)
+func localRedirect(w http.ResponseWriter, r *http.Request, path string) {
+	if r.URL.RawQuery != "" {
+		path += "?" + r.URL.RawQuery
+	}
+	w.Header().Set("Location", path)
+	w.WriteHeader(http.StatusMovedPermanently)
+}
 
-	f, err := os.Open(filepath.Join(h.rootPath, "404.html"))
+func (h handler) notFound(w http.ResponseWriter, r *http.Request, gen uint64) {
+	content, err := os.ReadFile(filepath.Join(h.rootPath, "404.html"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer f.Close()
+	content = injectReloadScript(content, gen)
+	w.Header().Set("Cache-Control", "no-store")
 
-	io.Copy(w, f)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusNotFound)
+	if r.Method != http.MethodHead {
+		w.Write(content)
+	}
 }

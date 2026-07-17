@@ -15,6 +15,7 @@ func NewHandler(rootPath string, keepHTMLExtension bool) http.Handler {
 	return handler{
 		rootPath:          rootPath,
 		keepHTMLExtension: keepHTMLExtension,
+		state:             newServeState(),
 	}
 }
 

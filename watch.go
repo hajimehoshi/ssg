@@ -11,7 +11,7 @@ import (
 	"github.com/fswatcher/fswatcher"
 )
 
-func watch(ctx context.Context, options *GenerateOptions) error {
+func watch(ctx context.Context, options *GenerateOptions, state *serveState) error {
 	if options == nil || options.SiteName == "" {
 		return fmt.Errorf("ssg: SiteName must not be empty")
 	}
@@ -38,7 +38,7 @@ func watch(ctx context.Context, options *GenerateOptions) error {
 				return nil
 			}
 			slog.Info("Regenerating site")
-			if err := Generate(options); err != nil {
+			if err := state.regenerate(options); err != nil {
 				return err
 			}
 		case err, ok := <-w.Errors:

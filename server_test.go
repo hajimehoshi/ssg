@@ -6,6 +6,7 @@ package ssg_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -168,7 +169,42 @@ func TestServeSite(t *testing.T) {
 
 	url := "http://" + addr + "/"
 	waitForHTTPContent(t, url, "one")
+	initial := getHTTPContent(t, url)
+	initialGen := reloadGeneration(t, initial)
+
+	notifyCh := make(chan error, 1)
+	go func() {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr+"/_ssg/notify?gen="+initialGen, nil)
+		if err != nil {
+			notifyCh <- err
+			return
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			notifyCh <- err
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusNoContent {
+			notifyCh <- fmt.Errorf("notification status: got: %d, want: %d", resp.StatusCode, http.StatusNoContent)
+			return
+		}
+		notifyCh <- nil
+	}()
 	waitForServedRegeneration(t, filepath.Join("contents", "index.html"), url)
+	select {
+	case err := <-notifyCh:
+		if err != nil {
+			t.Error(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("notification did not return after regeneration")
+	}
+
+	regenerated := getHTTPContent(t, url)
+	if got := reloadGeneration(t, regenerated); got == initialGen {
+		t.Errorf("generation did not advance from %s", initialGen)
+	}
 
 	cancel()
 	select {
@@ -185,6 +221,28 @@ func TestServeSite(t *testing.T) {
 		t.Fatalf("ServeSite did not release its address: %v", err)
 	}
 	l.Close()
+}
+
+func TestNotifyStopsWhenRequestContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	h := ssg.NewHandler(newTestSite(t), false)
+	w := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		r := httptest.NewRequest(http.MethodGet, "/_ssg/notify?gen=0", nil).WithContext(ctx)
+		h.ServeHTTP(w, r)
+		close(done)
+	}()
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("notification did not stop after the request context was canceled")
+	}
+	if got, want := w.Code, http.StatusServiceUnavailable; got != want {
+		t.Errorf("status: got: %d, want: %d", got, want)
+	}
 }
 
 func TestServeSiteStopsWhenRegenerationFails(t *testing.T) {
@@ -292,6 +350,43 @@ func waitForHTTPContent(t *testing.T, url, content string) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("%s did not serve content containing %q", url, content)
+}
+
+func getHTTPContent(t *testing.T, url string) string {
+	t.Helper()
+
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("%s: got status: %d, want: %d", url, resp.StatusCode, http.StatusOK)
+	}
+	return string(content)
+}
+
+func reloadGeneration(t *testing.T, content string) string {
+	t.Helper()
+
+	const marker = `/_ssg/notify?gen=`
+	index := strings.Index(content, marker)
+	if index < 0 {
+		t.Fatalf("served page does not contain the reload script: %q", content)
+	}
+	start := index + len(marker)
+	end := start
+	for end < len(content) && content[end] >= '0' && content[end] <= '9' {
+		end++
+	}
+	if end == start {
+		t.Fatalf("reload script does not contain a generation: %q", content)
+	}
+	return content[start:end]
 }
 
 func waitForServedRegeneration(t *testing.T, contentPath, url string) {
