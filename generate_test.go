@@ -41,7 +41,7 @@ func TestGenerateVersionedResourceFilename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	match := regexp.MustCompile(`href="/(site\.[A-Za-z0-9_-]{10}\.css)"`).FindSubmatch(content)
+	match := regexp.MustCompile(`href="/(site\.[a-z2-7]{10}\.css)"`).FindSubmatch(content)
 	if match == nil {
 		t.Fatalf("generated HTML has no versioned stylesheet: %q", content)
 	}

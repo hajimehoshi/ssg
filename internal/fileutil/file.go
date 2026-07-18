@@ -5,7 +5,7 @@ package fileutil
 
 import (
 	"bufio"
-	"encoding/base64"
+	"encoding/base32"
 	"hash/fnv"
 	"io"
 	"os"
@@ -45,7 +45,7 @@ func Hash(path string) (string, error) {
 	if _, err := io.Copy(h, bufio.NewReader(f)); err != nil {
 		return "", err
 	}
-	return base64.URLEncoding.EncodeToString(h.Sum(nil))[:10], nil
+	return strings.ToLower(base32.StdEncoding.EncodeToString(h.Sum(nil))[:10]), nil
 }
 
 // VersionedPath inserts hash before the extension in path.

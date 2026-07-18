@@ -102,7 +102,7 @@ func TestAddResourceVersionsLinkRel(t *testing.T) {
 				if got, want := len(versions), 1; got != want {
 					t.Errorf("resource versions: got: %d, want: %d", got, want)
 				}
-				match := regexp.MustCompile(`/([^/]+\.[A-Za-z0-9_-]{10}\.[^/"?]+)`).FindStringSubmatch(got)
+				match := regexp.MustCompile(`/([^/]+\.[a-z2-7]{10}\.[^/"?]+)`).FindStringSubmatch(got)
 				if match == nil {
 					t.Fatalf("got: %q, want a content hash in the filename", got)
 				}
@@ -132,7 +132,7 @@ func TestAddResourceVersionsPreservesQueryAndFragment(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := renderNode(t, node)
-	if !regexp.MustCompile(`href="/site\.[A-Za-z0-9_-]{10}\.css\?theme=dark#top"`).MatchString(got) {
+	if !regexp.MustCompile(`href="/site\.[a-z2-7]{10}\.css\?theme=dark#top"`).MatchString(got) {
 		t.Errorf("got: %q, want a versioned filename with the query and fragment preserved", got)
 	}
 	entries, err := os.ReadDir(outDir)
