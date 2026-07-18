@@ -52,7 +52,11 @@ func Generate(options *GenerateOptions) error {
 	if err := copyNonHTMLFiles(outputDir, inputDir); err != nil {
 		return err
 	}
-	if err := generateHTMLs(outputDir, inputDir, options); err != nil {
+	resources, err := generateHTMLs(outputDir, inputDir, options)
+	if err != nil {
+		return err
+	}
+	if err := copyVersionedResources(resources); err != nil {
 		return err
 	}
 	return nil

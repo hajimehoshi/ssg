@@ -14,7 +14,19 @@ import (
 
 	"github.com/evanw/esbuild/pkg/api"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/hajimehoshi/ssg/internal/fileutil"
 )
+
+func copyVersionedResources(resources map[string]string) error {
+	var wg errgroup.Group
+	for destination, source := range resources {
+		wg.Go(func() error {
+			return fileutil.Copy(destination, source)
+		})
+	}
+	return wg.Wait()
+}
 
 func copyNonHTMLFiles(outDir, inDir string) error {
 	var wg errgroup.Group
