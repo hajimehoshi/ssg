@@ -103,7 +103,6 @@ type siteData struct {
 
 // pageData is the per-page data available to templates as .Page.
 type pageData struct {
-	Lang    string
 	Path    string
 	URL     string
 	Meta    map[string]any
@@ -148,13 +147,6 @@ func generateHTML(path string, tmpl *template.Template, outDir, inDir string, op
 		return fmt.Errorf("ssg: extracting metadata in %s failed: %w", inPath, err)
 	}
 
-	lang := "en"
-	if dir := filepath.Dir(path); dir != "." {
-		if ts := strings.Split(dir, string(filepath.Separator)); len(ts) > 0 {
-			lang = ts[0]
-		}
-	}
-
 	urlPath := pagePath(path, options.KeepHTMLExtension)
 
 	var buf bytes.Buffer
@@ -167,7 +159,6 @@ func generateHTML(path string, tmpl *template.Template, outDir, inDir string, op
 			URL:  options.SiteURL,
 		},
 		Page: pageData{
-			Lang:    lang,
 			Path:    urlPath,
 			URL:     pageURL(options.SiteURL, urlPath),
 			Meta:    meta,
