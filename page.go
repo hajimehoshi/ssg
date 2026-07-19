@@ -6,6 +6,7 @@ package ssg
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"html/template"
 	"os"
@@ -18,37 +19,50 @@ import (
 	"github.com/hajimehoshi/ssg/internal/htmlrewrite"
 )
 
-func generateHTMLs(outDir, inDir string, options *GenerateOptions) error {
-	// templateFile is the base name of each directory's HTML template. Its
-	// leading underscore keeps it out of the generated site (see isIgnoredFile).
-	const templateFile = "_tmpl.html"
-
-	// templates maps a directory to the template it defines. Building it in the
-	// walk (which is single-threaded) lets the concurrent generation below read
-	// it without locking.
+func generateHTMLs(outDir, inDir, layoutDir string, options *GenerateOptions) error {
+	// templates maps each resolved layout path to its parsed template. Building
+	// it before concurrent generation lets the goroutines read it without
+	// locking.
 	templates := map[string]*template.Template{}
-	var contentPaths []string
+	if err := filepath.Walk(layoutDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || filepath.Ext(path) != ".html" {
+			return nil
+		}
+		rel, err := filepath.Rel(layoutDir, path)
+		if err != nil {
+			return err
+		}
+		namePath := strings.TrimSuffix(rel, ".html")
+		resolvedPath, err := resolveLayoutPath(layoutDir, namePath)
+		if errors.Is(err, errLayoutOutsideDir) || errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(resolvedPath)
+		if err != nil {
+			return err
+		}
+		tmpl, err := template.New(filepath.Base(path)).Parse(string(data))
+		if err != nil {
+			return err
+		}
+		templates[resolvedPath] = tmpl
+		return nil
+	}); err != nil {
+		return err
+	}
 
+	var contentPaths []string
 	if err := filepath.Walk(inDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() {
-			return nil
-		}
-		if filepath.Ext(path) != ".html" {
-			return nil
-		}
-		if filepath.Base(path) == templateFile {
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			tmpl, err := template.New(templateFile).Parse(string(data))
-			if err != nil {
-				return err
-			}
-			templates[filepath.Dir(path)] = tmpl
+		if info.IsDir() || filepath.Ext(path) != ".html" {
 			return nil
 		}
 		if isIgnoredFile(path) {
@@ -66,33 +80,11 @@ func generateHTMLs(outDir, inDir string, options *GenerateOptions) error {
 
 	var wg errgroup.Group
 	for _, path := range contentPaths {
-		tmpl := closestTemplate(templates, inDir, filepath.Dir(filepath.Join(inDir, path)))
-		if tmpl == nil {
-			return fmt.Errorf("ssg: no %s found for %s", templateFile, path)
-		}
 		wg.Go(func() error {
-			return generateHTML(path, tmpl, outDir, inDir, options)
+			return generateHTML(path, templates, outDir, inDir, layoutDir, options)
 		})
 	}
 	return wg.Wait()
-}
-
-// closestTemplate returns the template defined in dir or its nearest ancestor up
-// to inDir, or nil if none of them define one.
-func closestTemplate(templates map[string]*template.Template, inDir, dir string) *template.Template {
-	for {
-		if tmpl, ok := templates[dir]; ok {
-			return tmpl
-		}
-		if dir == inDir {
-			return nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return nil
-		}
-		dir = parent
-	}
 }
 
 // siteData is the site-wide data available to templates as .Site.
@@ -133,7 +125,7 @@ func pageURL(siteURL, path string) string {
 	return strings.TrimSuffix(siteURL, "/") + path
 }
 
-func generateHTML(path string, tmpl *template.Template, outDir, inDir string, options *GenerateOptions) error {
+func generateHTML(path string, templates map[string]*template.Template, outDir, inDir, layoutDir string, options *GenerateOptions) error {
 	inPath := filepath.Join(inDir, path)
 	outPath := filepath.Join(outDir, path)
 
@@ -145,6 +137,14 @@ func generateHTML(path string, tmpl *template.Template, outDir, inDir string, op
 	meta, content, err := extractMetadataFromHTML(content)
 	if err != nil {
 		return fmt.Errorf("ssg: extracting metadata in %s failed: %w", inPath, err)
+	}
+	layoutPath, err := consumeLayoutPath(meta, path, layoutDir)
+	if err != nil {
+		return err
+	}
+	tmpl, ok := templates[layoutPath]
+	if !ok {
+		return fmt.Errorf("ssg: layout for %s not found", path)
 	}
 
 	urlPath := pagePath(path, options.KeepHTMLExtension)
@@ -206,4 +206,70 @@ func generateHTML(path string, tmpl *template.Template, outDir, inDir string, op
 	}
 
 	return nil
+}
+
+func consumeLayoutPath(meta map[string]any, contentPath, layoutDir string) (string, error) {
+	const defaultLayout = "default"
+
+	value, ok := meta["_layout"]
+	if !ok {
+		value = defaultLayout
+	} else {
+		delete(meta, "_layout")
+	}
+	name, ok := value.(string)
+	if !ok || name == "" {
+		return "", fmt.Errorf("ssg: _layout for %s must be a non-empty string", contentPath)
+	}
+	if strings.Contains(name, `\`) {
+		return "", fmt.Errorf("ssg: layout path %q for %s must use forward slashes", name, contentPath)
+	}
+	namePath := filepath.FromSlash(name)
+	if filepath.IsAbs(namePath) {
+		return "", fmt.Errorf("ssg: layout path %q for %s must be relative", name, contentPath)
+	}
+	resolvedPath, err := resolveLayoutPath(layoutDir, namePath)
+	if errors.Is(err, errLayoutOutsideDir) {
+		return "", fmt.Errorf("ssg: layout path %q for %s is outside the layouts directory", name, contentPath)
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("ssg: layout %q for %s not found", name, contentPath)
+	}
+	if err != nil {
+		return "", err
+	}
+	return resolvedPath, nil
+}
+
+var errLayoutOutsideDir = errors.New("ssg: layout path is outside the layouts directory")
+
+func resolveLayoutPath(layoutDir, namePath string) (string, error) {
+	absLayoutDir, err := filepath.Abs(layoutDir)
+	if err != nil {
+		return "", err
+	}
+	candidate, err := filepath.Abs(filepath.Join(layoutDir, namePath) + ".html")
+	if err != nil {
+		return "", err
+	}
+	resolvedLayoutDir, err := filepath.EvalSymlinks(absLayoutDir)
+	if err != nil {
+		return "", err
+	}
+	resolvedCandidate, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(resolvedCandidate, withTrailingSeparator(resolvedLayoutDir)) {
+		return "", errLayoutOutsideDir
+	}
+	return resolvedCandidate, nil
+}
+
+func withTrailingSeparator(path string) string {
+	separator := string(filepath.Separator)
+	if strings.HasSuffix(path, separator) {
+		return path
+	}
+	return path + separator
 }

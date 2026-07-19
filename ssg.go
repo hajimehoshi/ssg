@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: 2026 Hajime Hoshi
 
-// Package ssg generates a static website from a directory of contents.
+// Package ssg generates a static website from content and layout files.
 package ssg
 
 import (
@@ -11,20 +11,11 @@ import (
 	"strings"
 )
 
-const (
-	defaultInputDir  = "content"
-	defaultOutputDir = "public"
-)
-
 // GenerateOptions is options for Generate.
 type GenerateOptions struct {
-	// InputDir is the directory containing the source files. The default is
-	// "content".
-	InputDir string
-
-	// OutputDir is the directory to generate the site into. The default is
-	// "public".
-	OutputDir string
+	// Dir is the project directory containing src and public. The default is
+	// the current directory.
+	Dir string
 
 	// SiteName is the name of the website, used e.g. in page titles.
 	SiteName string
@@ -44,7 +35,8 @@ func Generate(options *GenerateOptions) error {
 		return fmt.Errorf("ssg: SiteName must not be empty")
 	}
 
-	inputDir := options.inputDir()
+	inputDir := options.contentDir()
+	layoutDir := options.layoutDir()
 	outputDir := options.outputDir()
 	if err := os.RemoveAll(outputDir); err != nil {
 		return err
@@ -52,24 +44,22 @@ func Generate(options *GenerateOptions) error {
 	if err := copyNonHTMLFiles(outputDir, inputDir); err != nil {
 		return err
 	}
-	if err := generateHTMLs(outputDir, inputDir, options); err != nil {
+	if err := generateHTMLs(outputDir, inputDir, layoutDir, options); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *GenerateOptions) inputDir() string {
-	if o.InputDir != "" {
-		return o.InputDir
-	}
-	return defaultInputDir
+func (o *GenerateOptions) contentDir() string {
+	return filepath.Join(o.Dir, "src", "content")
+}
+
+func (o *GenerateOptions) layoutDir() string {
+	return filepath.Join(o.Dir, "src", "layouts")
 }
 
 func (o *GenerateOptions) outputDir() string {
-	if o.OutputDir != "" {
-		return o.OutputDir
-	}
-	return defaultOutputDir
+	return filepath.Join(o.Dir, "public")
 }
 
 func isIgnoredFile(path string) bool {

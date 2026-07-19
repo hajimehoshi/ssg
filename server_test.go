@@ -152,9 +152,7 @@ func TestHandler(t *testing.T) {
 
 func TestServeSite(t *testing.T) {
 	dir := t.TempDir()
-	inputDir := filepath.Join(dir, "input")
-	outputDir := filepath.Join(dir, "output")
-	writeContentSite(t, inputDir)
+	writeProjectSite(t, dir)
 
 	addr := unusedLocalAddr(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -164,9 +162,8 @@ func TestServeSite(t *testing.T) {
 		errCh <- ssg.ServeSite(ctx, &ssg.ServeSiteOptions{
 			Addr: addr,
 			GenerateOptions: ssg.GenerateOptions{
-				InputDir:  inputDir,
-				OutputDir: outputDir,
-				SiteName:  "Test",
+				Dir:      dir,
+				SiteName: "Test",
 			},
 		})
 	}()
@@ -195,7 +192,7 @@ func TestServeSite(t *testing.T) {
 		}
 		notifyCh <- nil
 	}()
-	waitForServedRegeneration(t, filepath.Join(inputDir, "index.html"), url)
+	waitForServedRegeneration(t, filepath.Join(dir, "src", "content", "index.html"), url)
 	select {
 	case err := <-notifyCh:
 		if err != nil {
@@ -251,7 +248,7 @@ func TestNotifyStopsWhenRequestContextCanceled(t *testing.T) {
 
 func TestServeSiteStopsWhenRegenerationFails(t *testing.T) {
 	t.Chdir(t.TempDir())
-	writeContentSite(t, "content")
+	writeProjectSite(t, ".")
 
 	addr := unusedLocalAddr(t)
 	ctx := t.Context()
@@ -266,7 +263,7 @@ func TestServeSiteStopsWhenRegenerationFails(t *testing.T) {
 	}()
 	waitForHTTPContent(t, "http://"+addr+"/", "one")
 
-	if err := os.WriteFile(filepath.Join("content", "_tmpl.html"), []byte("{{"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join("src", "layouts", "default.html"), []byte("{{"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -287,7 +284,7 @@ func TestServeSiteStopsWhenRegenerationFails(t *testing.T) {
 
 func TestServeSiteStopsWatchingWhenServerFails(t *testing.T) {
 	t.Chdir(t.TempDir())
-	writeContentSite(t, "content")
+	writeProjectSite(t, ".")
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -310,16 +307,20 @@ func TestServeSiteStopsWatchingWhenServerFails(t *testing.T) {
 	}
 }
 
-func writeContentSite(t *testing.T, dir string) {
+func writeProjectSite(t *testing.T, dir string) {
 	t.Helper()
 
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	contentDir := filepath.Join(dir, "src", "content")
+	layoutDir := filepath.Join(dir, "src", "layouts")
+	for _, dir := range []string{contentDir, layoutDir} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(layoutDir, "default.html"), []byte("<html><body>{{.Page.Content}}</body></html>"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "_tmpl.html"), []byte("<html><body>{{.Page.Content}}</body></html>"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<p>one</p>"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(contentDir, "index.html"), []byte("<p>one</p>"), 0644); err != nil {
 		t.Fatal(err)
 	}
 }

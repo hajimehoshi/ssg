@@ -22,11 +22,11 @@ type ServeSiteOptions struct {
 	Addr string
 
 	// GenerateOptions specifies how to generate the site initially and after
-	// changes to the contents directory.
+	// changes to the content or layout directories.
 	GenerateOptions GenerateOptions
 }
 
-// ServeSite generates and serves the site, regenerating it when contents
+// ServeSite generates and serves the site, regenerating it when source files
 // change. It blocks until ctx is canceled or watching, generation, or serving
 // fails.
 func ServeSite(ctx context.Context, options *ServeSiteOptions) error {
