@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/hajimehoshi/ssg/internal/htmlrewrite"
@@ -93,26 +92,15 @@ func TestAddResourceVersionsLinkRel(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			node := parseLinkElement(t, tc.In)
-			versions, err := htmlrewrite.AddResourceVersions(node, outDir, ".")
-			if err != nil {
+			if err := htmlrewrite.AddResourceVersions(node, outDir, "."); err != nil {
 				t.Fatal(err)
 			}
 			got := renderNode(t, node)
 			if tc.Versioned {
-				if got, want := len(versions), 1; got != want {
-					t.Errorf("resource versions: got: %d, want: %d", got, want)
-				}
-				match := regexp.MustCompile(`/([^/]+\.[a-z2-7]{10}\.[^/"?]+)`).FindStringSubmatch(got)
-				if match == nil {
-					t.Fatalf("got: %q, want a content hash in the filename", got)
-				}
-				if strings.Contains(got, "?v=") {
-					t.Errorf("got: %q, want no cache-busting query", got)
+				if !regexp.MustCompile(`\?v=[a-z2-7]{10}`).MatchString(got) {
+					t.Errorf("got: %q, want a lower-case base32 hash query", got)
 				}
 				return
-			}
-			if got := len(versions); got != 0 {
-				t.Errorf("resource versions: got: %d, want: 0", got)
 			}
 			if want := tc.In; got != want {
 				t.Errorf("got: %q, want: %q", got, want)
@@ -128,12 +116,12 @@ func TestAddResourceVersionsPreservesQueryAndFragment(t *testing.T) {
 	}
 
 	node := parseLinkElement(t, `<link rel="stylesheet" href="/site.css?theme=dark#top"/>`)
-	if _, err := htmlrewrite.AddResourceVersions(node, outDir, "."); err != nil {
+	if err := htmlrewrite.AddResourceVersions(node, outDir, "."); err != nil {
 		t.Fatal(err)
 	}
 	got := renderNode(t, node)
-	if !regexp.MustCompile(`href="/site\.[a-z2-7]{10}\.css\?theme=dark#top"`).MatchString(got) {
-		t.Errorf("got: %q, want a versioned filename with the query and fragment preserved", got)
+	if !regexp.MustCompile(`href="/site\.css\?theme=dark&amp;v=[a-z2-7]{10}#top"`).MatchString(got) {
+		t.Errorf("got: %q, want the existing query and fragment with a hash query", got)
 	}
 	entries, err := os.ReadDir(outDir)
 	if err != nil {
@@ -153,7 +141,7 @@ func TestAddResourceVersionsRefreshesHash(t *testing.T) {
 			t.Fatal(err)
 		}
 		node := parseLinkElement(t, `<link rel="stylesheet" href="/site.css"/>`)
-		if _, err := htmlrewrite.AddResourceVersions(node, outDir, "."); err != nil {
+		if err := htmlrewrite.AddResourceVersions(node, outDir, "."); err != nil {
 			t.Fatal(err)
 		}
 		urls = append(urls, renderNode(t, node))

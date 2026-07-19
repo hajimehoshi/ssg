@@ -12,7 +12,7 @@ import (
 	"github.com/hajimehoshi/ssg"
 )
 
-func TestGenerateVersionedResourceFilename(t *testing.T) {
+func TestGenerateResourceVersionQuery(t *testing.T) {
 	dir := t.TempDir()
 	inDir := filepath.Join(dir, "content")
 	outDir := filepath.Join(dir, "public")
@@ -41,27 +41,23 @@ func TestGenerateVersionedResourceFilename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	match := regexp.MustCompile(`href="/(site\.[a-z2-7]{10}\.css)"`).FindSubmatch(content)
+	match := regexp.MustCompile(`href="/site\.css\?v=([a-z2-7]{10})"`).FindSubmatch(content)
 	if match == nil {
-		t.Fatalf("generated HTML has no versioned stylesheet: %q", content)
-	}
-	versioned, err := os.ReadFile(filepath.Join(outDir, string(match[1])))
-	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("generated HTML has no stylesheet version query: %q", content)
 	}
 	original, err := os.ReadFile(filepath.Join(outDir, "site.css"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := string(versioned), string(original); got != want {
-		t.Errorf("versioned asset: got: %q, want: %q", got, want)
+	if got, want := string(original), "body{color:red}"; got != want {
+		t.Errorf("stylesheet: got: %q, want: %q", got, want)
 	}
-	matches, err := filepath.Glob(filepath.Join(outDir, "unused.*.bin"))
+	matches, err := filepath.Glob(filepath.Join(outDir, "site.*.css"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(matches) != 0 {
-		t.Errorf("unreferenced asset has versioned copies: %q", matches)
+		t.Errorf("stylesheet has fingerprinted copies: %q", matches)
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "unused.bin")); err != nil {
 		t.Errorf("unreferenced asset: %v", err)

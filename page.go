@@ -8,11 +8,9 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
-	"maps"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"golang.org/x/net/html"
 	"golang.org/x/sync/errgroup"
@@ -20,21 +18,7 @@ import (
 	"github.com/hajimehoshi/ssg/internal/htmlrewrite"
 )
 
-type resourceVersions struct {
-	mu    sync.Mutex
-	files map[string]string
-}
-
-func (r *resourceVersions) add(versions map[string]string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.files == nil {
-		r.files = map[string]string{}
-	}
-	maps.Copy(r.files, versions)
-}
-
-func generateHTMLs(outDir, inDir string, options *GenerateOptions) (map[string]string, error) {
+func generateHTMLs(outDir, inDir string, options *GenerateOptions) error {
 	// templateFile is the base name of each directory's HTML template. Its
 	// leading underscore keeps it out of the generated site (see isIgnoredFile).
 	const templateFile = "_tmpl.html"
@@ -77,24 +61,20 @@ func generateHTMLs(outDir, inDir string, options *GenerateOptions) (map[string]s
 		contentPaths = append(contentPaths, rel)
 		return nil
 	}); err != nil {
-		return nil, err
+		return err
 	}
 
-	var resources resourceVersions
 	var wg errgroup.Group
 	for _, path := range contentPaths {
 		tmpl := closestTemplate(templates, inDir, filepath.Dir(filepath.Join(inDir, path)))
 		if tmpl == nil {
-			return nil, fmt.Errorf("ssg: no %s found for %s", templateFile, path)
+			return fmt.Errorf("ssg: no %s found for %s", templateFile, path)
 		}
 		wg.Go(func() error {
-			return generateHTML(path, tmpl, outDir, inDir, options, &resources)
+			return generateHTML(path, tmpl, outDir, inDir, options)
 		})
 	}
-	if err := wg.Wait(); err != nil {
-		return nil, err
-	}
-	return resources.files, nil
+	return wg.Wait()
 }
 
 // closestTemplate returns the template defined in dir or its nearest ancestor up
@@ -154,7 +134,7 @@ func pageURL(siteURL, path string) string {
 	return strings.TrimSuffix(siteURL, "/") + path
 }
 
-func generateHTML(path string, tmpl *template.Template, outDir, inDir string, options *GenerateOptions, resources *resourceVersions) error {
+func generateHTML(path string, tmpl *template.Template, outDir, inDir string, options *GenerateOptions) error {
 	inPath := filepath.Join(inDir, path)
 	outPath := filepath.Join(outDir, path)
 
@@ -208,11 +188,9 @@ func generateHTML(path string, tmpl *template.Template, outDir, inDir string, op
 		return err
 	}
 
-	versions, err := htmlrewrite.AddResourceVersions(node, outDir, filepath.Dir(path))
-	if err != nil {
+	if err := htmlrewrite.AddResourceVersions(node, outDir, filepath.Dir(path)); err != nil {
 		return err
 	}
-	resources.add(versions)
 
 	htmlrewrite.RewritePageLinks(node, options.KeepHTMLExtension)
 
