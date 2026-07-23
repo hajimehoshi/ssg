@@ -13,6 +13,105 @@ import (
 	"github.com/hajimehoshi/ssg"
 )
 
+func TestGenerateSiteMetadata(t *testing.T) {
+	dir := t.TempDir()
+	writeProjectSite(t, dir)
+
+	layout := `<html><body>{{.Site.Name}}|{{.Site.URL}}|{{index .Site.Meta "title"}}|{{index (index .Site.Meta "author") "name"}}|{{index .Site.Meta "draft"}}|{{.Page.Content}}</body></html>`
+	if err := os.WriteFile(filepath.Join(dir, "src", "layouts", "default.html"), []byte(layout), 0644); err != nil {
+		t.Fatal(err)
+	}
+	meta := "title: Site title\nauthor:\n  name: Hajime\ndraft: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "src", "meta.yaml"), []byte(meta), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ssg.Generate(&ssg.GenerateOptions{
+		Dir:      dir,
+		SiteName: "Test site",
+		SiteURL:  "https://example.com",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "public", "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(content), "Test site|https://example.com|Site title|Hajime|true|<p>one</p>"; !strings.Contains(got, want) {
+		t.Errorf("generated HTML: got: %q, want content containing: %q", got, want)
+	}
+}
+
+func TestGenerateWithoutSiteMetadata(t *testing.T) {
+	dir := t.TempDir()
+	writeProjectSite(t, dir)
+
+	layout := `<html><body>{{if .Site.Meta}}unexpected metadata{{else}}empty metadata{{end}}</body></html>`
+	if err := os.WriteFile(filepath.Join(dir, "src", "layouts", "default.html"), []byte(layout), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ssg.Generate(&ssg.GenerateOptions{
+		Dir:      dir,
+		SiteName: "Test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "public", "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(content), "empty metadata"; !strings.Contains(got, want) {
+		t.Errorf("generated HTML: got: %q, want content containing: %q", got, want)
+	}
+}
+
+func TestGenerateRejectsInvalidSiteMetadata(t *testing.T) {
+	testCases := []struct {
+		Name string
+		Meta string
+		Err  string
+	}{
+		{
+			Name: "malformed",
+			Meta: "title: [",
+			Err:  "parsing site metadata",
+		},
+		{
+			Name: "scalar",
+			Meta: "site title",
+			Err:  "must be a mapping",
+		},
+		{
+			Name: "sequence",
+			Meta: "- first\n- second\n",
+			Err:  "must be a mapping",
+		},
+		{
+			Name: "empty document",
+			Meta: "",
+			Err:  "must be a mapping",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeProjectSite(t, dir)
+			if err := os.WriteFile(filepath.Join(dir, "src", "meta.yaml"), []byte(tc.Meta), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			err := ssg.Generate(&ssg.GenerateOptions{
+				Dir:      dir,
+				SiteName: "Test",
+			})
+			if err == nil || !strings.Contains(err.Error(), tc.Err) {
+				t.Errorf("Generate: got: %v, want an error containing %q", err, tc.Err)
+			}
+		})
+	}
+}
+
 func TestGenerateResourceVersionQuery(t *testing.T) {
 	dir := t.TempDir()
 	inDir := filepath.Join(dir, "src", "content")

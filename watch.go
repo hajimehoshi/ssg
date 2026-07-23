@@ -25,10 +25,7 @@ func watch(ctx context.Context, options *GenerateOptions, state *serveState) err
 	}
 	defer w.Close()
 
-	if err := w.AddRecursive(options.contentDir(), fswatcher.All); err != nil {
-		return err
-	}
-	if err := w.AddRecursive(options.layoutDir(), fswatcher.All); err != nil {
+	if err := w.AddRecursive(options.sourceDir(), fswatcher.All); err != nil {
 		return err
 	}
 

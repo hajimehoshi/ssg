@@ -35,6 +35,11 @@ func Generate(options *GenerateOptions) error {
 		return fmt.Errorf("ssg: SiteName must not be empty")
 	}
 
+	meta, err := loadSiteMetadata(options.metadataPath())
+	if err != nil {
+		return err
+	}
+
 	inputDir := options.contentDir()
 	layoutDir := options.layoutDir()
 	outputDir := options.outputDir()
@@ -44,18 +49,26 @@ func Generate(options *GenerateOptions) error {
 	if err := copyNonHTMLFiles(outputDir, inputDir); err != nil {
 		return err
 	}
-	if err := generateHTMLs(outputDir, inputDir, layoutDir, options); err != nil {
+	if err := generateHTMLs(outputDir, inputDir, layoutDir, meta, options); err != nil {
 		return err
 	}
 	return nil
 }
 
+func (o *GenerateOptions) sourceDir() string {
+	return filepath.Join(o.Dir, "src")
+}
+
 func (o *GenerateOptions) contentDir() string {
-	return filepath.Join(o.Dir, "src", "content")
+	return filepath.Join(o.sourceDir(), "content")
 }
 
 func (o *GenerateOptions) layoutDir() string {
-	return filepath.Join(o.Dir, "src", "layouts")
+	return filepath.Join(o.sourceDir(), "layouts")
+}
+
+func (o *GenerateOptions) metadataPath() string {
+	return filepath.Join(o.sourceDir(), "meta.yaml")
 }
 
 func (o *GenerateOptions) outputDir() string {

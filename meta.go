@@ -5,7 +5,9 @@ package ssg
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -15,6 +17,30 @@ import (
 // asciiWhitespace is a set of ASCII whitespace characters defined by the HTML spec.
 // https://infra.spec.whatwg.org/#ascii-whitespace
 var asciiWhitespace = "\t\n\f\r "
+
+func loadSiteMetadata(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var document yaml.Node
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		return nil, fmt.Errorf("ssg: parsing site metadata in %s failed: %w", path, err)
+	}
+	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("ssg: site metadata in %s must be a mapping", path)
+	}
+
+	meta := map[string]any{}
+	if err := document.Content[0].Decode(&meta); err != nil {
+		return nil, fmt.Errorf("ssg: parsing site metadata in %s failed: %w", path, err)
+	}
+	return meta, nil
+}
 
 // extractMetadataFromHTML parses the metadata data block at the beginning of
 // an HTML content file and returns the metadata and the content with the data

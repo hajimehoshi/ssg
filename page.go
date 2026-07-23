@@ -19,7 +19,7 @@ import (
 	"github.com/hajimehoshi/ssg/internal/htmlrewrite"
 )
 
-func generateHTMLs(outDir, inDir, layoutDir string, options *GenerateOptions) error {
+func generateHTMLs(outDir, inDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions) error {
 	// templates maps each resolved layout path to its parsed template. Building
 	// it before concurrent generation lets the goroutines read it without
 	// locking.
@@ -81,7 +81,7 @@ func generateHTMLs(outDir, inDir, layoutDir string, options *GenerateOptions) er
 	var wg errgroup.Group
 	for _, path := range contentPaths {
 		wg.Go(func() error {
-			return generateHTML(path, templates, outDir, inDir, layoutDir, options)
+			return generateHTML(path, templates, outDir, inDir, layoutDir, siteMeta, options)
 		})
 	}
 	return wg.Wait()
@@ -91,6 +91,7 @@ func generateHTMLs(outDir, inDir, layoutDir string, options *GenerateOptions) er
 type siteData struct {
 	Name string
 	URL  string
+	Meta map[string]any
 }
 
 // pageData is the per-page data available to templates as .Page.
@@ -125,7 +126,7 @@ func pageURL(siteURL, path string) string {
 	return strings.TrimSuffix(siteURL, "/") + path
 }
 
-func generateHTML(path string, templates map[string]*template.Template, outDir, inDir, layoutDir string, options *GenerateOptions) error {
+func generateHTML(path string, templates map[string]*template.Template, outDir, inDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions) error {
 	inPath := filepath.Join(inDir, path)
 	outPath := filepath.Join(outDir, path)
 
@@ -157,6 +158,7 @@ func generateHTML(path string, templates map[string]*template.Template, outDir, 
 		Site: siteData{
 			Name: options.SiteName,
 			URL:  options.SiteURL,
+			Meta: siteMeta,
 		},
 		Page: pageData{
 			Path:    urlPath,

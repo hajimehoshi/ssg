@@ -224,6 +224,61 @@ func TestServeSite(t *testing.T) {
 	l.Close()
 }
 
+func TestServeSiteRegeneratesForSiteMetadataChange(t *testing.T) {
+	dir := t.TempDir()
+	writeProjectSite(t, dir)
+	layout := `<html><body>{{with index .Site.Meta "message"}}{{.}}{{else}}missing metadata{{end}}</body></html>`
+	if err := os.WriteFile(filepath.Join(dir, "src", "layouts", "default.html"), []byte(layout), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	addr := unusedLocalAddr(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- ssg.ServeSite(ctx, &ssg.ServeSiteOptions{
+			Addr: addr,
+			GenerateOptions: ssg.GenerateOptions{
+				Dir:      dir,
+				SiteName: "Test",
+			},
+		})
+	}()
+
+	url := "http://" + addr + "/"
+	waitForHTTPContent(t, url, "missing metadata")
+	metadataPath := filepath.Join(dir, "src", "meta.yaml")
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := os.WriteFile(metadataPath, []byte("message: site metadata\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.Get(url)
+		if err == nil {
+			body, readErr := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if readErr == nil && resp.StatusCode == http.StatusOK && strings.Contains(string(body), "site metadata") {
+				break
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := getHTTPContent(t, url); !strings.Contains(got, "site metadata") {
+		t.Fatalf("site was not regenerated after %s changed: %q", metadataPath, got)
+	}
+
+	cancel()
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("ServeSite: got: %v, want: %v", err, context.Canceled)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("ServeSite did not return after its context was canceled")
+	}
+}
+
 func TestNotifyStopsWhenRequestContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	h := ssg.NewHandler(newTestSite(t), false)
