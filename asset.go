@@ -5,14 +5,10 @@ package ssg
 
 import (
 	"bufio"
-	"bytes"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
-	"github.com/evanw/esbuild/pkg/api"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hajimehoshi/ssg/internal/htmlrewrite"
@@ -66,7 +62,7 @@ func copyNonHTMLFiles(outDir, inDir string) error {
 				}
 			case ".js":
 				outbuf := bufio.NewWriter(out)
-				if err := minifyJS(outbuf, bufio.NewReader(in)); err != nil {
+				if err := htmlrewrite.MinifyJS(outbuf, bufio.NewReader(in)); err != nil {
 					return err
 				}
 				if err := outbuf.Flush(); err != nil {
@@ -84,30 +80,6 @@ func copyNonHTMLFiles(outDir, inDir string) error {
 		return err
 	}
 	if err := wg.Wait(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func minifyJS(out io.Writer, in io.Reader) error {
-	js, err := io.ReadAll(in)
-	if err != nil {
-		return err
-	}
-	r := api.Transform(string(js), api.TransformOptions{
-		Loader:            api.LoaderJS,
-		MinifyWhitespace:  true,
-		MinifyIdentifiers: true,
-		MinifySyntax:      true,
-	})
-	if len(r.Errors) > 0 {
-		var msgs []string
-		for _, e := range r.Errors {
-			msgs = append(msgs, e.Text)
-		}
-		return fmt.Errorf("ssg: minifying JS failed: %s", strings.Join(msgs, ", "))
-	}
-	if _, err := out.Write(bytes.TrimSpace(r.Code)); err != nil {
 		return err
 	}
 	return nil

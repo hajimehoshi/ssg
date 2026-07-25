@@ -233,6 +233,83 @@ func TestGenerateRejectsInvalidInlineCSS(t *testing.T) {
 	}
 }
 
+func TestGenerateMinifiesScriptElements(t *testing.T) {
+	dir := t.TempDir()
+	writeProjectSite(t, dir)
+
+	layout := `<html><head><script>
+// Mark the document as ready.
+window.ready = 1;
+</script><script type="">
+window.emptyType = 2;
+</script><script type="module">
+export default 3;
+</script><script type="Application/JavaScript">
+window.applicationType = 4;
+</script><script type="text/ecmascript">
+window.ecmascriptType = 5;
+</script><script type="application/json">
+{ "answer": 42 }
+</script><script type="text/javascript; charset=utf-8">
+window.parameterizedType = 6;
+</script></head><body>{{.Page.Content}}</body></html>`
+	if err := os.WriteFile(filepath.Join(dir, "src", "layouts", "default.html"), []byte(layout), 0644); err != nil {
+		t.Fatal(err)
+	}
+	content := `<script type="text/javascript">
+window.loaded = 1;
+</script><p>one</p>`
+	if err := os.WriteFile(filepath.Join(dir, "src", "content", "index.html"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ssg.Generate(&ssg.GenerateOptions{
+		Dir:      dir,
+		SiteName: "Test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	generated, err := os.ReadFile(filepath.Join(dir, "public", "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`<script>window.ready=1;</script>`,
+		`<script type="">window.emptyType=2;</script>`,
+		`<script type="module">export default 3;</script>`,
+		`<script type="Application/JavaScript">window.applicationType=4;</script>`,
+		`<script type="text/ecmascript">window.ecmascriptType=5;</script>`,
+		`<script type="text/javascript">window.loaded=1;</script>`,
+		"<script type=\"application/json\">\n{ \"answer\": 42 }\n</script>",
+		"<script type=\"text/javascript; charset=utf-8\">\nwindow.parameterizedType = 6;\n</script>",
+	} {
+		if !strings.Contains(string(generated), want) {
+			t.Errorf("generated HTML: got: %q, want content containing: %q", generated, want)
+		}
+	}
+}
+
+func TestGenerateRejectsInvalidInlineJavaScript(t *testing.T) {
+	dir := t.TempDir()
+	writeProjectSite(t, dir)
+
+	layout := `<html><head><script>const = ;</script></head><body>{{.Page.Content}}</body></html>`
+	if err := os.WriteFile(filepath.Join(dir, "src", "layouts", "default.html"), []byte(layout), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := ssg.Generate(&ssg.GenerateOptions{
+		Dir:      dir,
+		SiteName: "Test",
+	})
+	if err == nil {
+		t.Fatal("Generate succeeded with invalid inline JavaScript")
+	}
+	if !strings.Contains(err.Error(), "ssg: minifying JS failed") {
+		t.Errorf("Generate: got error: %v, want an inline JavaScript minification error", err)
+	}
+}
+
 func TestGenerateSelectsLayout(t *testing.T) {
 	dir := t.TempDir()
 	contentDir := filepath.Join(dir, "src", "content")

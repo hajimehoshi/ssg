@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+
+	"github.com/hajimehoshi/ssg/internal/htmlrewrite"
 )
 
 const notifyPath = "/_ssg/notify"
@@ -29,7 +31,7 @@ const reloadScriptSource = `
 
 var reloadScriptTemplate = func() *template.Template {
 	var result bytes.Buffer
-	if err := minifyJS(&result, strings.NewReader(reloadScriptSource)); err != nil {
+	if err := htmlrewrite.MinifyJS(&result, strings.NewReader(reloadScriptSource)); err != nil {
 		panic(err)
 	}
 	return template.Must(template.New("reload").Parse(result.String()))

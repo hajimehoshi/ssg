@@ -13,9 +13,13 @@ import (
 	"golang.org/x/text/width"
 )
 
-// Minify minifies the document, including CSS in style elements.
+// Minify minifies the document, including CSS in style elements and JavaScript
+// in script elements.
 func Minify(node *html.Node) error {
 	if err := minifyStyleElements(node); err != nil {
+		return err
+	}
+	if err := minifyScriptElements(node); err != nil {
 		return err
 	}
 	removeHeadWhitespace(node)
