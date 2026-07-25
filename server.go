@@ -36,7 +36,7 @@ func ServeSite(ctx context.Context, options *ServeSiteOptions) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := Generate(&options.GenerateOptions); err != nil {
+	if err := generate(&options.GenerateOptions, generationModeServe); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {

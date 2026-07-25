@@ -5,6 +5,7 @@ package htmlrewrite
 
 import (
 	"bufio"
+	"errors"
 	"os"
 	"regexp"
 	"slices"
@@ -17,8 +18,8 @@ import (
 // AddFontPreloads appends a <link rel="preload"> element to the end of the
 // document's <head> for every woff2 font used by the document's local
 // stylesheets. pageDir is the document's directory relative to the site root,
-// used to resolve relative stylesheet URLs.
-func AddFontPreloads(node *html.Node, outDir, pageDir string) error {
+// used to resolve relative stylesheet URLs. mode controls missing stylesheets.
+func AddFontPreloads(node *html.Node, outDir, pageDir string, mode MissingResourceMode) error {
 	head := getElementByName(node, "head")
 	if head == nil {
 		return nil
@@ -31,6 +32,9 @@ func AddFontPreloads(node *html.Node, outDir, pageDir string) error {
 			continue
 		}
 		urls, err := woff2URLsInCSS(file)
+		if mode == IgnoreMissingResource && errors.Is(err, os.ErrNotExist) {
+			continue
+		}
 		if err != nil {
 			return err
 		}

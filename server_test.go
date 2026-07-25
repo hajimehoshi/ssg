@@ -279,6 +279,89 @@ func TestServeSiteRegeneratesForSiteMetadataChange(t *testing.T) {
 	}
 }
 
+func TestServeSiteRegeneratesWhenReferencedResourceIsDeleted(t *testing.T) {
+	dir := t.TempDir()
+	writeProjectSite(t, dir)
+	contentPath := filepath.Join(dir, "src", "content", "index.html")
+	resourcePath := filepath.Join(dir, "src", "content", "logo_light.svg")
+	if err := os.WriteFile(contentPath, []byte(`<img src="/logo_light.svg">`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(resourcePath, []byte(`<svg></svg>`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	addr := unusedLocalAddr(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- ssg.ServeSite(ctx, &ssg.ServeSiteOptions{
+			Addr: addr,
+			GenerateOptions: ssg.GenerateOptions{
+				Dir:      dir,
+				SiteName: "Test",
+			},
+		})
+	}()
+
+	url := "http://" + addr + "/"
+	waitForHTTPContent(t, url, "logo_light.svg?v=")
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if err := os.WriteFile(contentPath, []byte(`<img src="/logo_light.svg"><p>watching</p>`), 0644); err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.Get(url)
+		if err == nil {
+			body, readErr := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if readErr == nil && resp.StatusCode == http.StatusOK && strings.Contains(string(body), "watching") {
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("server did not begin watching the site")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if err := os.Remove(resourcePath); err != nil {
+		t.Fatal(err)
+	}
+	deadline = time.Now().Add(10 * time.Second)
+	for {
+		select {
+		case err := <-errCh:
+			t.Fatalf("ServeSite stopped after a referenced resource was deleted: %v", err)
+		default:
+		}
+		resp, err := http.Get(url)
+		if err == nil {
+			body, readErr := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			content := string(body)
+			if readErr == nil && resp.StatusCode == http.StatusOK && strings.Contains(content, `src="/logo_light.svg"`) {
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("site was not regenerated after a referenced resource was deleted")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	cancel()
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("ServeSite: got: %v, want: %v", err, context.Canceled)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("ServeSite did not return after its context was canceled")
+	}
+}
+
 func TestNotifyStopsWhenRequestContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	h := ssg.NewHandler(newTestSite(t), false)

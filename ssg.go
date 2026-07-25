@@ -31,6 +31,17 @@ type GenerateOptions struct {
 }
 
 func Generate(options *GenerateOptions) error {
+	return generate(options, generationModeStrict)
+}
+
+type generationMode int
+
+const (
+	generationModeStrict generationMode = iota
+	generationModeServe
+)
+
+func generate(options *GenerateOptions, mode generationMode) error {
 	if options == nil || options.SiteName == "" {
 		return fmt.Errorf("ssg: SiteName must not be empty")
 	}
@@ -49,7 +60,7 @@ func Generate(options *GenerateOptions) error {
 	if err := copyNonHTMLFiles(outputDir, inputDir); err != nil {
 		return err
 	}
-	if err := generateHTMLs(outputDir, inputDir, layoutDir, meta, options); err != nil {
+	if err := generateHTMLs(outputDir, inputDir, layoutDir, meta, options, mode); err != nil {
 		return err
 	}
 	return nil

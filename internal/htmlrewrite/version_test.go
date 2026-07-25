@@ -92,7 +92,7 @@ func TestAddResourceVersionsLinkRel(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			node := parseLinkElement(t, tc.In)
-			if err := htmlrewrite.AddResourceVersions(node, outDir, "."); err != nil {
+			if err := htmlrewrite.AddResourceVersions(node, outDir, ".", htmlrewrite.ErrorOnMissingResource); err != nil {
 				t.Fatal(err)
 			}
 			got := renderNode(t, node)
@@ -116,7 +116,7 @@ func TestAddResourceVersionsPreservesQueryAndFragment(t *testing.T) {
 	}
 
 	node := parseLinkElement(t, `<link rel="stylesheet" href="/site.css?theme=dark#top"/>`)
-	if err := htmlrewrite.AddResourceVersions(node, outDir, "."); err != nil {
+	if err := htmlrewrite.AddResourceVersions(node, outDir, ".", htmlrewrite.ErrorOnMissingResource); err != nil {
 		t.Fatal(err)
 	}
 	got := renderNode(t, node)
@@ -132,6 +132,16 @@ func TestAddResourceVersionsPreservesQueryAndFragment(t *testing.T) {
 	}
 }
 
+func TestAddResourceVersionsIgnoresMissingResource(t *testing.T) {
+	node := parseLinkElement(t, `<link rel="icon" href="/missing.svg"/>`)
+	if err := htmlrewrite.AddResourceVersions(node, t.TempDir(), ".", htmlrewrite.IgnoreMissingResource); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := renderNode(t, node), `<link rel="icon" href="/missing.svg"/>`; got != want {
+		t.Errorf("got: %q, want: %q", got, want)
+	}
+}
+
 func TestAddResourceVersionsRefreshesHash(t *testing.T) {
 	outDir := t.TempDir()
 	path := filepath.Join(outDir, "site.css")
@@ -141,7 +151,7 @@ func TestAddResourceVersionsRefreshesHash(t *testing.T) {
 			t.Fatal(err)
 		}
 		node := parseLinkElement(t, `<link rel="stylesheet" href="/site.css"/>`)
-		if err := htmlrewrite.AddResourceVersions(node, outDir, "."); err != nil {
+		if err := htmlrewrite.AddResourceVersions(node, outDir, ".", htmlrewrite.ErrorOnMissingResource); err != nil {
 			t.Fatal(err)
 		}
 		urls = append(urls, renderNode(t, node))

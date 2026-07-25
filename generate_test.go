@@ -4,6 +4,7 @@
 package ssg_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -165,6 +166,22 @@ func TestGenerateResourceVersionQuery(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "unused.bin")); err != nil {
 		t.Errorf("unreferenced asset: %v", err)
+	}
+}
+
+func TestGenerateRejectsMissingResource(t *testing.T) {
+	dir := t.TempDir()
+	writeProjectSite(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "src", "content", "index.html"), []byte(`<img src="/missing.svg">`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := ssg.Generate(&ssg.GenerateOptions{
+		Dir:      dir,
+		SiteName: "Test",
+	})
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("Generate: got: %v, want an error matching os.ErrNotExist", err)
 	}
 }
 

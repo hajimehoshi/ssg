@@ -19,7 +19,7 @@ import (
 	"github.com/hajimehoshi/ssg/internal/htmlrewrite"
 )
 
-func generateHTMLs(outDir, inDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions) error {
+func generateHTMLs(outDir, inDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions, mode generationMode) error {
 	// templates maps each resolved layout path to its parsed template. Building
 	// it before concurrent generation lets the goroutines read it without
 	// locking.
@@ -81,7 +81,7 @@ func generateHTMLs(outDir, inDir, layoutDir string, siteMeta map[string]any, opt
 	var wg errgroup.Group
 	for _, path := range contentPaths {
 		wg.Go(func() error {
-			return generateHTML(path, templates, outDir, inDir, layoutDir, siteMeta, options)
+			return generateHTML(path, templates, outDir, inDir, layoutDir, siteMeta, options, mode)
 		})
 	}
 	return wg.Wait()
@@ -126,7 +126,7 @@ func pageURL(siteURL, path string) string {
 	return strings.TrimSuffix(siteURL, "/") + path
 }
 
-func generateHTML(path string, templates map[string]*template.Template, outDir, inDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions) error {
+func generateHTML(path string, templates map[string]*template.Template, outDir, inDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions, mode generationMode) error {
 	inPath := filepath.Join(inDir, path)
 	outPath := filepath.Join(outDir, path)
 
@@ -177,11 +177,15 @@ func generateHTML(path string, templates map[string]*template.Template, outDir, 
 
 	htmlrewrite.SetMissingTitle(node, options.SiteName)
 
-	if err := htmlrewrite.AddFontPreloads(node, outDir, filepath.Dir(path)); err != nil {
+	missingResourceMode := htmlrewrite.ErrorOnMissingResource
+	if mode == generationModeServe {
+		missingResourceMode = htmlrewrite.IgnoreMissingResource
+	}
+	if err := htmlrewrite.AddFontPreloads(node, outDir, filepath.Dir(path), missingResourceMode); err != nil {
 		return err
 	}
 
-	if err := htmlrewrite.AddResourceVersions(node, outDir, filepath.Dir(path)); err != nil {
+	if err := htmlrewrite.AddResourceVersions(node, outDir, filepath.Dir(path), missingResourceMode); err != nil {
 		return err
 	}
 

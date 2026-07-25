@@ -58,7 +58,7 @@ func (s *serveState) withSite(f func(gen uint64)) {
 func (s *serveState) regenerate(options *GenerateOptions) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := Generate(options); err != nil {
+	if err := generate(options, generationModeServe); err != nil {
 		return err
 	}
 	s.gen++
