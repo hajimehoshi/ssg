@@ -168,6 +168,71 @@ func TestGenerateResourceVersionQuery(t *testing.T) {
 	}
 }
 
+func TestGenerateMinifiesStyleElements(t *testing.T) {
+	dir := t.TempDir()
+	writeProjectSite(t, dir)
+
+	layout := `<html><head><style>
+body {
+  color: red;
+}
+</style></head><body>{{.Page.Content}}</body></html>`
+	if err := os.WriteFile(filepath.Join(dir, "src", "layouts", "default.html"), []byte(layout), 0644); err != nil {
+		t.Fatal(err)
+	}
+	content := `<style>
+p {
+  display: block;
+}
+</style><p>one</p>`
+	if err := os.WriteFile(filepath.Join(dir, "src", "content", "index.html"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ssg.Generate(&ssg.GenerateOptions{
+		Dir:      dir,
+		SiteName: "Test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	generated, err := os.ReadFile(filepath.Join(dir, "public", "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`<style>body{color:red}</style>`,
+		`<style>p{display:block}</style>`,
+	} {
+		if !strings.Contains(string(generated), want) {
+			t.Errorf("generated HTML: got: %q, want content containing: %q", generated, want)
+		}
+	}
+}
+
+func TestGenerateRejectsInvalidInlineCSS(t *testing.T) {
+	dir := t.TempDir()
+	writeProjectSite(t, dir)
+
+	invalidCSS := "\\\n"
+	layout := `<html><head><style>` + invalidCSS + `</style></head><body>{{.Page.Content}}</body></html>`
+	if err := os.WriteFile(filepath.Join(dir, "src", "layouts", "default.html"), []byte(layout), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := ssg.Generate(&ssg.GenerateOptions{
+		Dir:      dir,
+		SiteName: "Test",
+	})
+	if err == nil {
+		t.Fatal("Generate succeeded with invalid inline CSS")
+	}
+	for _, want := range []string{"ssg: minifying CSS failed", "Invalid escape"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Generate: got error: %v, want an error containing %q", err, want)
+		}
+	}
+}
+
 func TestGenerateSelectsLayout(t *testing.T) {
 	dir := t.TempDir()
 	contentDir := filepath.Join(dir, "src", "content")

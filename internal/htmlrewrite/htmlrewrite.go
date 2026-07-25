@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: 2023 Hajime Hoshi
 
-// Package htmlrewrite provides the transforms a generated page's parsed HTML
-// document goes through before it is rendered. Every transform rewrites the
-// document in place.
+// Package htmlrewrite provides transforms applied while generating HTML pages
+// and their resources. Document transforms rewrite parsed HTML in place.
 package htmlrewrite
 
 import (

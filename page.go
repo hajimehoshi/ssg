@@ -187,7 +187,9 @@ func generateHTML(path string, templates map[string]*template.Template, outDir, 
 
 	htmlrewrite.RewritePageLinks(node, options.KeepHTMLExtension)
 
-	htmlrewrite.Minify(node)
+	if err := htmlrewrite.Minify(node); err != nil {
+		return err
+	}
 
 	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
 		return err

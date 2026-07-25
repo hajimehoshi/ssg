@@ -13,13 +13,16 @@ import (
 	"golang.org/x/text/width"
 )
 
-// Minify drops the document parts that do not affect rendering: comments, and
-// the whitespace the source's formatting introduces.
-func Minify(node *html.Node) {
+// Minify minifies the document, including CSS in style elements.
+func Minify(node *html.Node) error {
+	if err := minifyStyleElements(node); err != nil {
+		return err
+	}
 	removeHeadWhitespace(node)
 	removeComments(node)
 	removeInterElementWhitespace(node)
 	processNewLines(node)
+	return nil
 }
 
 func isASCIIWhitespace(r rune) bool {

@@ -14,6 +14,8 @@ import (
 
 	"github.com/evanw/esbuild/pkg/api"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/hajimehoshi/ssg/internal/htmlrewrite"
 )
 
 func copyNonHTMLFiles(outDir, inDir string) error {
@@ -56,7 +58,7 @@ func copyNonHTMLFiles(outDir, inDir string) error {
 			switch filepath.Ext(path) {
 			case ".css":
 				outbuf := bufio.NewWriter(out)
-				if err := minifyCSS(outbuf, bufio.NewReader(in)); err != nil {
+				if err := htmlrewrite.MinifyCSS(outbuf, bufio.NewReader(in)); err != nil {
 					return err
 				}
 				if err := outbuf.Flush(); err != nil {
@@ -82,30 +84,6 @@ func copyNonHTMLFiles(outDir, inDir string) error {
 		return err
 	}
 	if err := wg.Wait(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func minifyCSS(out io.Writer, in io.Reader) error {
-	css, err := io.ReadAll(in)
-	if err != nil {
-		return err
-	}
-	r := api.Transform(string(css), api.TransformOptions{
-		Loader:            api.LoaderCSS,
-		MinifyWhitespace:  true,
-		MinifyIdentifiers: true,
-		MinifySyntax:      true,
-	})
-	if len(r.Errors) > 0 {
-		var msgs []string
-		for _, e := range r.Errors {
-			msgs = append(msgs, e.Text)
-		}
-		return fmt.Errorf("ssg: minifying CSS failed: %s", strings.Join(msgs, ", "))
-	}
-	if _, err := out.Write(bytes.TrimSpace(r.Code)); err != nil {
 		return err
 	}
 	return nil
