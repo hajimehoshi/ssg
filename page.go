@@ -116,10 +116,11 @@ func generatePages(outDir, pageDir, layoutDir string, siteMeta map[string]any, o
 		return err
 	}
 
+	var images imageCache
 	var wg errgroup.Group
 	for _, path := range pagePaths {
 		wg.Go(func() error {
-			return generatePage(path, templates, outDir, pageDir, layoutDir, siteMeta, options, mode)
+			return generatePage(path, templates, &images, outDir, pageDir, layoutDir, siteMeta, options, mode)
 		})
 	}
 	return wg.Wait()
@@ -132,11 +133,12 @@ type siteData struct {
 	Meta         map[string]any
 	resourceRoot string
 	mode         generationMode
+	images       *imageCache
 }
 
 // Image returns metadata about the local image at path.
 func (s siteData) Image(path string) (*imageData, error) {
-	return inspectImage(s.resourceRoot, path, s.mode)
+	return s.images.get(s.resourceRoot, path, s.mode)
 }
 
 // pageData is the per-page data available to templates as .Page.
@@ -171,7 +173,7 @@ func pageURL(siteURL, path string) string {
 	return strings.TrimSuffix(siteURL, "/") + path
 }
 
-func generatePage(sourcePath string, templates map[string]*template.Template, outDir, pageDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions, mode generationMode) error {
+func generatePage(sourcePath string, templates map[string]*template.Template, images *imageCache, outDir, pageDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions, mode generationMode) error {
 	inPath := filepath.Join(pageDir, sourcePath)
 	outputPath := pagepath.Output(sourcePath)
 	outPath := filepath.Join(outDir, outputPath)
@@ -222,6 +224,7 @@ func generatePage(sourcePath string, templates map[string]*template.Template, ou
 			Meta:         siteMeta,
 			resourceRoot: outDir,
 			mode:         mode,
+			images:       images,
 		},
 		Page: pageData{
 			Path:    urlPath,

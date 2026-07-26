@@ -108,6 +108,48 @@ func TestGenerateInspectsLocalImages(t *testing.T) {
 	}
 }
 
+func TestImageCache(t *testing.T) {
+	dir := t.TempDir()
+	imagePath := filepath.Join(dir, "image.png")
+	writePNG := func(width, height int) {
+		t.Helper()
+
+		file, err := os.Create(imagePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := png.Encode(file, image.NewNRGBA(image.Rect(0, 0, width, height))); err != nil {
+			file.Close()
+			t.Fatal(err)
+		}
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writePNG(13, 17)
+	var cache ssg.ImageCache
+	first, err := cache.Get(dir, "/image.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	writePNG(19, 23)
+	second, err := cache.Get(dir, "/image.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := second, first; got != want {
+		t.Errorf("second inspection: got: %v, want cached result: %v", got, want)
+	}
+	if got, want := second.Width, 13; got != want {
+		t.Errorf("second inspection width: got: %d, want: %d", got, want)
+	}
+	if got, want := second.Height, 17; got != want {
+		t.Errorf("second inspection height: got: %d, want: %d", got, want)
+	}
+}
+
 // webPConfig contains a 75x100 extended WebP header without image data. It is
 // sufficient for DecodeConfig and would fail if the full image were decoded.
 const webPConfig = "RIFF\x16\x00\x00\x00WEBPVP8X\x0a\x00\x00\x00\x00\x00\x00\x00\x4a\x00\x00\x63\x00\x00"

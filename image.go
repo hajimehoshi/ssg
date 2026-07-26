@@ -15,6 +15,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	_ "golang.org/x/image/webp"
 )
@@ -24,6 +25,25 @@ type imageData struct {
 	MediaType string
 	Width     int
 	Height    int
+}
+
+type imageCache struct {
+	entries sync.Map
+}
+
+type imageCacheEntry struct {
+	once sync.Once
+	data *imageData
+	err  error
+}
+
+func (c *imageCache) get(resourceRoot, resourcePath string, mode generationMode) (*imageData, error) {
+	entryValue, _ := c.entries.LoadOrStore(resourcePath, &imageCacheEntry{})
+	entry := entryValue.(*imageCacheEntry)
+	entry.once.Do(func() {
+		entry.data, entry.err = inspectImage(resourceRoot, resourcePath, mode)
+	})
+	return entry.data, entry.err
 }
 
 func inspectImage(resourceRoot, resourcePath string, mode generationMode) (*imageData, error) {

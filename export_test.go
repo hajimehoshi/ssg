@@ -34,3 +34,11 @@ func PageURL(siteURL, path string) string {
 func GenerateForServe(options *GenerateOptions) error {
 	return generate(options, generationModeServe)
 }
+
+type ImageCache struct {
+	cache imageCache
+}
+
+func (c *ImageCache) Get(resourceRoot, resourcePath string) (*imageData, error) {
+	return c.cache.get(resourceRoot, resourcePath, generationModeStrict)
+}
