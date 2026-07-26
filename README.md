@@ -6,18 +6,37 @@ Single-Star Generator (A static site generator for Hajime Hoshi)
 
 The source tree separates files by how they are published:
 
-- `src/pages` contains HTML pages that are rendered with layouts, rewritten,
-  and minified.
+- `src/pages` contains HTML and Markdown pages that are rendered with layouts,
+  rewritten, and minified.
 - `src/assets` contains CSS and JavaScript files that are minified.
 - `src/static` contains files that are copied to `public` byte-for-byte.
 - `src/layouts` contains HTML layouts, and `src/meta.yaml` contains site-wide
   metadata.
 
 Each publishing directory maps directly to the root of `public`. For example,
-`src/pages/about.html`, `src/assets/css/site.css`, and
+`src/pages/about.md`, `src/assets/css/site.css`, and
 `src/static/images/logo.png` produce `public/about.html`,
 `public/css/site.css`, and `public/images/logo.png`, respectively. Generation
 fails if multiple source files map to the same output path.
+
+## Markdown pages
+
+Markdown pages use GitHub Flavored Markdown with automatic heading IDs and can
+contain raw HTML. A local link to a Markdown source file is rewritten to the
+generated page URL. For example, `[About](/about.md)` becomes a link to `/about`
+when HTML extensions are omitted from page URLs.
+
+A Markdown page can begin with YAML front matter. The values are available to
+the layout through `.Page.Meta`; `_layout` selects the page's layout.
+
+```markdown
+---
+_layout: article
+title: About
+---
+
+# About
+```
 
 ## Local image metadata
 

@@ -11,6 +11,10 @@ func ExtractMetadataFromHTML(content []byte) (map[string]any, []byte, error) {
 	return extractMetadataFromHTML(content)
 }
 
+func ExtractMetadataFromMarkdown(content []byte) (map[string]any, []byte, error) {
+	return extractMetadataFromMarkdown(content)
+}
+
 func NewHandler(rootPath string, keepHTMLExtension bool) http.Handler {
 	return handler{
 		rootPath:          rootPath,

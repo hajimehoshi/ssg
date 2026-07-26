@@ -139,3 +139,81 @@ func TestExtractMetadataFromHTML(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractMetadataFromMarkdown(t *testing.T) {
+	testCases := []struct {
+		Name    string
+		In      string
+		Meta    map[string]any
+		Content string
+		Err     bool
+	}{
+		{
+			Name:    "no metadata",
+			In:      "# Title\n",
+			Content: "# Title\n",
+		},
+		{
+			Name: "metadata",
+			In:   "---\ntitle: Foo\ndraft: true\ntags: [go, ssg]\n---\n# Title\n",
+			Meta: map[string]any{
+				"title": "Foo",
+				"draft": true,
+				"tags":  []any{"go", "ssg"},
+			},
+			Content: "# Title\n",
+		},
+		{
+			Name:    "empty front matter",
+			In:      "---\n---\n# Title\n",
+			Meta:    map[string]any{},
+			Content: "# Title\n",
+		},
+		{
+			Name:    "CRLF",
+			In:      "---\r\ntitle: Foo\r\n---\r\n# Title\r\n",
+			Meta:    map[string]any{"title": "Foo"},
+			Content: "# Title\r\n",
+		},
+		{
+			Name:    "leading whitespace",
+			In:      " \n---\ntitle: Foo\n---\n# Title\n",
+			Content: " \n---\ntitle: Foo\n---\n# Title\n",
+		},
+		{
+			Name: "invalid YAML",
+			In:   "---\n: : :\n---\n# Title\n",
+			Err:  true,
+		},
+		{
+			Name: "non-mapping YAML",
+			In:   "---\njust a scalar\n---\n# Title\n",
+			Err:  true,
+		},
+		{
+			Name: "unclosed front matter",
+			In:   "---\ntitle: Foo\n# Title\n",
+			Err:  true,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			meta, content, err := ssg.ExtractMetadataFromMarkdown([]byte(tc.In))
+			if tc.Err {
+				if err == nil {
+					t.Fatal("expected an error but got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(meta, tc.Meta) {
+				t.Errorf("meta: got: %v, want: %v", meta, tc.Meta)
+			}
+			if got, want := string(content), tc.Content; got != want {
+				t.Errorf("content: got: %q, want: %q", got, want)
+			}
+		})
+	}
+}

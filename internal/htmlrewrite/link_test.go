@@ -37,6 +37,17 @@ func TestPageHref(t *testing.T) {
 			Out:  "foo",
 		},
 		{
+			Name: "Markdown page",
+			In:   "foo.md",
+			Out:  "foo",
+		},
+		{
+			Name:              "Markdown page, keeping the extension",
+			In:                "foo.md",
+			KeepHTMLExtension: true,
+			Out:               "foo.html",
+		},
+		{
 			Name:              "relative page, keeping the extension",
 			In:                "foo.html",
 			KeepHTMLExtension: true,
@@ -75,6 +86,11 @@ func TestPageHref(t *testing.T) {
 			Out:  "../",
 		},
 		{
+			Name: "Markdown parent index",
+			In:   "../index.md",
+			Out:  "../",
+		},
+		{
 			Name: "name ending with index.html",
 			In:   "myindex.html",
 			Out:  "myindex",
@@ -100,6 +116,11 @@ func TestPageHref(t *testing.T) {
 			Out:  "https://example.com/foo.html",
 		},
 		{
+			Name: "external Markdown page",
+			In:   "https://example.com/foo.md",
+			Out:  "https://example.com/foo.md",
+		},
+		{
 			Name: "protocol-relative page",
 			In:   "//example.com/foo.html",
 			Out:  "//example.com/foo.html",
@@ -113,6 +134,11 @@ func TestPageHref(t *testing.T) {
 			Name: "non-page resource",
 			In:   "/style.css",
 			Out:  "/style.css",
+		},
+		{
+			Name: "Unicode path",
+			In:   "日本語",
+			Out:  "%E6%97%A5%E6%9C%AC%E8%AA%9E",
 		},
 		{
 			Name: "fragment only",
@@ -142,6 +168,10 @@ func TestRewritePageLinks(t *testing.T) {
 	}{
 		{
 			In:  `<a href="/writings/foo.html">foo</a>`,
+			Out: `<a href="/writings/foo">foo</a>`,
+		},
+		{
+			In:  `<a href="/writings/foo.md">foo</a>`,
 			Out: `<a href="/writings/foo">foo</a>`,
 		},
 		{

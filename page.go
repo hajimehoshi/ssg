@@ -13,13 +13,24 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
+	goldmarkhtml "github.com/yuin/goldmark/renderer/html"
 	"golang.org/x/net/html"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hajimehoshi/ssg/internal/htmlrewrite"
+	"github.com/hajimehoshi/ssg/internal/pagepath"
 )
 
-func generateHTMLs(outDir, pageDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions, mode generationMode) error {
+var markdownConverter = goldmark.New(
+	goldmark.WithExtensions(extension.GFM),
+	goldmark.WithParserOptions(parser.WithAutoHeadingID()),
+	goldmark.WithRendererOptions(goldmarkhtml.WithUnsafe()),
+)
+
+func generatePages(outDir, pageDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions, mode generationMode) error {
 	// templates maps each normalized layout path to its parsed template. Building
 	// it before concurrent generation lets the goroutines read it without
 	// locking.
@@ -62,7 +73,7 @@ func generateHTMLs(outDir, pageDir, layoutDir string, siteMeta map[string]any, o
 		if err != nil {
 			return err
 		}
-		if info.IsDir() || filepath.Ext(path) != ".html" {
+		if info.IsDir() || !isPageExtension(filepath.Ext(path)) {
 			return nil
 		}
 		if isIgnoredFile(path) {
@@ -81,7 +92,7 @@ func generateHTMLs(outDir, pageDir, layoutDir string, siteMeta map[string]any, o
 	var wg errgroup.Group
 	for _, path := range pagePaths {
 		wg.Go(func() error {
-			return generateHTML(path, templates, outDir, pageDir, layoutDir, siteMeta, options, mode)
+			return generatePage(path, templates, outDir, pageDir, layoutDir, siteMeta, options, mode)
 		})
 	}
 	return wg.Wait()
@@ -109,8 +120,8 @@ type pageData struct {
 	Content template.HTML
 }
 
-// pagePath returns the site-root-absolute path of the page file at relPath,
-// which is relative to the page root. A trailing index.html is dropped so
+// pagePath returns the site-root-absolute path of the generated page file at
+// relPath. A trailing index.html is dropped so
 // that the path denotes the directory the browser requests; any other .html
 // extension is dropped unless keepHTMLExtension is set.
 func pagePath(relPath string, keepHTMLExtension bool) string {
@@ -133,29 +144,45 @@ func pageURL(siteURL, path string) string {
 	return strings.TrimSuffix(siteURL, "/") + path
 }
 
-func generateHTML(path string, templates map[string]*template.Template, outDir, pageDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions, mode generationMode) error {
-	inPath := filepath.Join(pageDir, path)
-	outPath := filepath.Join(outDir, path)
+func generatePage(sourcePath string, templates map[string]*template.Template, outDir, pageDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions, mode generationMode) error {
+	inPath := filepath.Join(pageDir, sourcePath)
+	outputPath := pagepath.Output(sourcePath)
+	outPath := filepath.Join(outDir, outputPath)
 
 	content, err := os.ReadFile(inPath)
 	if err != nil {
 		return err
 	}
 
-	meta, content, err := extractMetadataFromHTML(content)
+	var meta map[string]any
+	switch filepath.Ext(sourcePath) {
+	case ".html":
+		meta, content, err = extractMetadataFromHTML(content)
+	case ".md":
+		meta, content, err = extractMetadataFromMarkdown(content)
+	default:
+		panic("unreachable")
+	}
 	if err != nil {
 		return fmt.Errorf("ssg: extracting metadata in %s failed: %w", inPath, err)
 	}
-	layoutPath, err := consumeLayoutPath(meta, path, layoutDir)
+	if filepath.Ext(sourcePath) == ".md" {
+		var converted bytes.Buffer
+		if err := markdownConverter.Convert(content, &converted); err != nil {
+			return fmt.Errorf("ssg: converting Markdown in %s failed: %w", inPath, err)
+		}
+		content = converted.Bytes()
+	}
+	layoutPath, err := consumeLayoutPath(meta, sourcePath, layoutDir)
 	if err != nil {
 		return err
 	}
 	tmpl, ok := templates[layoutPath]
 	if !ok {
-		return fmt.Errorf("ssg: layout for %s not found", path)
+		return fmt.Errorf("ssg: layout for %s not found", sourcePath)
 	}
 
-	urlPath := pagePath(path, options.KeepHTMLExtension)
+	urlPath := pagePath(outputPath, options.KeepHTMLExtension)
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, struct {
@@ -190,11 +217,11 @@ func generateHTML(path string, templates map[string]*template.Template, outDir, 
 	if mode == generationModeServe {
 		missingResourceMode = htmlrewrite.IgnoreMissingResource
 	}
-	if err := htmlrewrite.AddFontPreloads(node, outDir, filepath.Dir(path), missingResourceMode); err != nil {
+	if err := htmlrewrite.AddFontPreloads(node, outDir, filepath.Dir(outputPath), missingResourceMode); err != nil {
 		return err
 	}
 
-	if err := htmlrewrite.AddResourceVersions(node, outDir, filepath.Dir(path), missingResourceMode); err != nil {
+	if err := htmlrewrite.AddResourceVersions(node, outDir, filepath.Dir(outputPath), missingResourceMode); err != nil {
 		return err
 	}
 

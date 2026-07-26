@@ -15,6 +15,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hajimehoshi/ssg/internal/htmlrewrite"
+	"github.com/hajimehoshi/ssg/internal/pagepath"
 )
 
 type sourceTree struct {
@@ -29,7 +30,11 @@ func validateSourceTrees(pageDir, assetDir, staticDir string) error {
 		{dir: assetDir, kind: "asset", applyIgnoreRules: true},
 		{dir: staticDir, kind: "static"},
 	}
-	outputs := map[string]sourceTree{}
+	type outputSource struct {
+		kind string
+		path string
+	}
+	outputs := map[string]outputSource{}
 	for _, tree := range trees {
 		err := filepath.Walk(tree.dir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
@@ -41,8 +46,8 @@ func validateSourceTrees(pageDir, assetDir, staticDir string) error {
 			ext := filepath.Ext(path)
 			switch tree.kind {
 			case "page":
-				if ext != ".html" {
-					return fmt.Errorf("ssg: page file %s must have an .html extension", path)
+				if !isPageExtension(ext) {
+					return fmt.Errorf("ssg: page file %s has unsupported extension %q", path, ext)
 				}
 			case "asset":
 				if ext != ".css" && ext != ".js" {
@@ -54,13 +59,16 @@ func validateSourceTrees(pageDir, assetDir, staticDir string) error {
 			if err != nil {
 				return err
 			}
+			if tree.kind == "page" {
+				rel = pagepath.Output(rel)
+			}
 			for output, previous := range outputs {
 				separator := string(filepath.Separator)
 				if rel == output || strings.HasPrefix(rel, output+separator) || strings.HasPrefix(output, rel+separator) {
-					return fmt.Errorf("ssg: output path collision between %s file %s and %s file %s", previous.kind, filepath.Join(previous.dir, output), tree.kind, path)
+					return fmt.Errorf("ssg: output path collision between %s file %s and %s file %s", previous.kind, previous.path, tree.kind, path)
 				}
 			}
-			outputs[rel] = tree
+			outputs[rel] = outputSource{kind: tree.kind, path: path}
 			return nil
 		})
 		if errors.Is(err, os.ErrNotExist) {

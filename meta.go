@@ -115,3 +115,37 @@ loop:
 		}
 	}
 }
+
+// extractMetadataFromMarkdown removes an initial YAML front matter block.
+func extractMetadataFromMarkdown(content []byte) (map[string]any, []byte, error) {
+	line, rest, ok := consumeLine(content)
+	if !ok || !bytes.Equal(line, []byte("---")) {
+		return nil, content, nil
+	}
+
+	var yamlSrc []byte
+	for {
+		line, next, ok := consumeLine(rest)
+		if bytes.Equal(line, []byte("---")) {
+			meta := map[string]any{}
+			if err := yaml.Unmarshal(yamlSrc, &meta); err != nil {
+				return nil, nil, err
+			}
+			return meta, next, nil
+		}
+		if !ok {
+			return nil, nil, fmt.Errorf("ssg: metadata front matter is not closed")
+		}
+		yamlSrc = append(yamlSrc, line...)
+		yamlSrc = append(yamlSrc, '\n')
+		rest = next
+	}
+}
+
+func consumeLine(content []byte) (line, rest []byte, ok bool) {
+	before, after, ok := bytes.Cut(content, []byte{'\n'})
+	if !ok {
+		return bytes.TrimSuffix(content, []byte("\r")), nil, false
+	}
+	return bytes.TrimSuffix(before, []byte("\r")), after, true
+}

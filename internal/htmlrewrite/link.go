@@ -8,12 +8,12 @@ import (
 	"strings"
 
 	"golang.org/x/net/html"
+
+	"github.com/hajimehoshi/ssg/internal/pagepath"
 )
 
-// pageHref returns href with its path adjusted to match the URL of the page it
-// points at: a trailing index.html is dropped, and unless keepHTMLExtension is
-// set, so is any other .html extension. An href that does not point at a local
-// page is returned unchanged.
+// pageHref serializes a local href with generated-page paths adjusted.
+// Non-local and invalid hrefs are returned unchanged.
 func pageHref(href string, keepHTMLExtension bool) string {
 	u, err := url.Parse(href)
 	if err != nil {
@@ -22,6 +22,7 @@ func pageHref(href string, keepHTMLExtension bool) string {
 	if u.Scheme != "" || u.Host != "" || u.Path == "" {
 		return href
 	}
+	u.Path = pagepath.Output(u.Path)
 	switch {
 	case u.Path == "index.html":
 		// An empty path would denote the current page rather than its
@@ -31,8 +32,6 @@ func pageHref(href string, keepHTMLExtension bool) string {
 		u.Path = strings.TrimSuffix(u.Path, "index.html")
 	case !keepHTMLExtension && strings.HasSuffix(u.Path, ".html"):
 		u.Path = strings.TrimSuffix(u.Path, ".html")
-	default:
-		return href
 	}
 	return u.String()
 }

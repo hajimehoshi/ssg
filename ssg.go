@@ -69,7 +69,7 @@ func generate(options *GenerateOptions, mode generationMode) error {
 	if err := generateAssets(outputDir, assetDir); err != nil {
 		return err
 	}
-	if err := generateHTMLs(outputDir, pageDir, layoutDir, meta, options, mode); err != nil {
+	if err := generatePages(outputDir, pageDir, layoutDir, meta, options, mode); err != nil {
 		return err
 	}
 	return nil
@@ -114,4 +114,8 @@ func isIgnoredFile(path string) bool {
 		return true
 	}
 	return false
+}
+
+func isPageExtension(ext string) bool {
+	return ext == ".html" || ext == ".md"
 }

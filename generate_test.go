@@ -67,6 +67,63 @@ func TestGenerateWithoutSiteMetadata(t *testing.T) {
 	}
 }
 
+func TestGenerateMarkdownPage(t *testing.T) {
+	dir := t.TempDir()
+	writeProjectSite(t, dir)
+
+	pageDir := filepath.Join(dir, "src", "pages", "writings")
+	if err := os.MkdirAll(pageDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	layout := `<html><body><header>{{index .Page.Meta "title"}}|{{.Page.Path}}|{{.Page.URL}}</header>{{.Page.Content}}</body></html>`
+	if err := os.WriteFile(filepath.Join(dir, "src", "layouts", "article.html"), []byte(layout), 0644); err != nil {
+		t.Fatal(err)
+	}
+	page := `---
+_layout: article
+title: Markdown page
+---
+# Heading
+
+[Home](../index.md)
+
+| Left | Right |
+| --- | --- |
+| one | two |
+
+<aside>Raw HTML</aside>
+`
+	if err := os.WriteFile(filepath.Join(pageDir, "article.md"), []byte(page), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ssg.Generate(&ssg.GenerateOptions{
+		Dir:      dir,
+		SiteName: "Test",
+		SiteURL:  "https://example.com",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	generated, err := os.ReadFile(filepath.Join(dir, "public", "writings", "article.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Markdown page|/writings/article|https://example.com/writings/article",
+		`<h1 id="heading">Heading</h1>`,
+		`<a href="../">Home</a>`,
+		"<table>",
+		"<aside>Raw HTML</aside>",
+	} {
+		if !strings.Contains(string(generated), want) {
+			t.Errorf("generated HTML: got: %q, want content containing: %q", generated, want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "public", "writings", "article.md")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("Markdown source was copied to public: %v", err)
+	}
+}
+
 func TestGenerateRejectsInvalidSiteMetadata(t *testing.T) {
 	testCases := []struct {
 		Name string
@@ -233,6 +290,18 @@ func TestGenerateRejectsOutputPathCollision(t *testing.T) {
 
 	if err := ssg.Generate(&ssg.GenerateOptions{Dir: dir, SiteName: "Test"}); err == nil {
 		t.Fatal("Generate succeeded with colliding page and static files")
+	}
+}
+
+func TestGenerateRejectsMarkdownOutputPathCollision(t *testing.T) {
+	dir := t.TempDir()
+	writeProjectSite(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "src", "pages", "index.md"), []byte("# Markdown"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ssg.Generate(&ssg.GenerateOptions{Dir: dir, SiteName: "Test"}); err == nil {
+		t.Fatal("Generate succeeded with HTML and Markdown pages producing the same path")
 	}
 }
 
