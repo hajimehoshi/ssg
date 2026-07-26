@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: 2026 Hajime Hoshi
 
-// Package ssg generates a static website from content and layout files.
+// Package ssg generates a static website from page, asset, static, and layout
+// files.
 package ssg
 
 import (
@@ -51,16 +52,24 @@ func generate(options *GenerateOptions, mode generationMode) error {
 		return err
 	}
 
-	inputDir := options.contentDir()
+	pageDir := options.pageDir()
+	assetDir := options.assetDir()
+	staticDir := options.staticDir()
 	layoutDir := options.layoutDir()
 	outputDir := options.outputDir()
+	if err := validateSourceTrees(pageDir, assetDir, staticDir); err != nil {
+		return err
+	}
 	if err := os.RemoveAll(outputDir); err != nil {
 		return err
 	}
-	if err := copyNonHTMLFiles(outputDir, inputDir); err != nil {
+	if err := copyStaticFiles(outputDir, staticDir); err != nil {
 		return err
 	}
-	if err := generateHTMLs(outputDir, inputDir, layoutDir, meta, options, mode); err != nil {
+	if err := generateAssets(outputDir, assetDir); err != nil {
+		return err
+	}
+	if err := generateHTMLs(outputDir, pageDir, layoutDir, meta, options, mode); err != nil {
 		return err
 	}
 	return nil
@@ -70,8 +79,16 @@ func (o *GenerateOptions) sourceDir() string {
 	return filepath.Join(o.Dir, "src")
 }
 
-func (o *GenerateOptions) contentDir() string {
-	return filepath.Join(o.sourceDir(), "content")
+func (o *GenerateOptions) pageDir() string {
+	return filepath.Join(o.sourceDir(), "pages")
+}
+
+func (o *GenerateOptions) assetDir() string {
+	return filepath.Join(o.sourceDir(), "assets")
+}
+
+func (o *GenerateOptions) staticDir() string {
+	return filepath.Join(o.sourceDir(), "static")
 }
 
 func (o *GenerateOptions) layoutDir() string {

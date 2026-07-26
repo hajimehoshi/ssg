@@ -22,7 +22,7 @@ type ServeSiteOptions struct {
 	Addr string
 
 	// GenerateOptions specifies how to generate the site initially and after
-	// changes to the content or layout directories.
+	// changes under the source directory.
 	GenerateOptions GenerateOptions
 }
 

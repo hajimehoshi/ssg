@@ -73,7 +73,7 @@ func TestGenerateInspectsLocalImages(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			dir := t.TempDir()
 			writeProjectSite(t, dir)
-			imagePath := filepath.Join(dir, "src", "content", filepath.FromSlash(strings.TrimPrefix(tc.Path, "/")))
+			imagePath := filepath.Join(dir, "src", "static", filepath.FromSlash(strings.TrimPrefix(tc.Path, "/")))
 			if err := os.MkdirAll(filepath.Dir(imagePath), 0755); err != nil {
 				t.Fatal(err)
 			}
@@ -182,7 +182,7 @@ func TestGenerateRejectsInvalidLocalImage(t *testing.T) {
 			dir := t.TempDir()
 			writeProjectSite(t, dir)
 			if tc.CreatePath != "" {
-				resourcePath := filepath.Join(dir, "src", "content", filepath.FromSlash(tc.CreatePath))
+				resourcePath := filepath.Join(dir, "src", "static", filepath.FromSlash(tc.CreatePath))
 				var err error
 				if tc.Directory {
 					err = os.MkdirAll(resourcePath, 0755)
@@ -221,7 +221,7 @@ func TestGenerateInspectsLocalImageSymlink(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outsidePath, filepath.Join(dir, "src", "content", "image.png")); err != nil {
+	if err := os.Symlink(outsidePath, filepath.Join(dir, "src", "static", "image.png")); err != nil {
 		t.Fatal(err)
 	}
 	layout := `<html><body>{{with .Site.Image "/image.png"}}{{.MediaType}}|{{.Width}}|{{.Height}}{{end}}</body></html>`

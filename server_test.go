@@ -192,7 +192,7 @@ func TestServeSite(t *testing.T) {
 		}
 		notifyCh <- nil
 	}()
-	waitForServedRegeneration(t, filepath.Join(dir, "src", "content", "index.html"), url)
+	waitForServedRegeneration(t, filepath.Join(dir, "src", "pages", "index.html"), url)
 	select {
 	case err := <-notifyCh:
 		if err != nil {
@@ -282,8 +282,8 @@ func TestServeSiteRegeneratesForSiteMetadataChange(t *testing.T) {
 func TestServeSiteRegeneratesWhenReferencedResourceIsDeleted(t *testing.T) {
 	dir := t.TempDir()
 	writeProjectSite(t, dir)
-	contentPath := filepath.Join(dir, "src", "content", "index.html")
-	resourcePath := filepath.Join(dir, "src", "content", "logo_light.svg")
+	contentPath := filepath.Join(dir, "src", "pages", "index.html")
+	resourcePath := filepath.Join(dir, "src", "static", "logo_light.svg")
 	if err := os.WriteFile(contentPath, []byte(`<img src="/logo_light.svg">`), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -448,9 +448,11 @@ func TestServeSiteStopsWatchingWhenServerFails(t *testing.T) {
 func writeProjectSite(t *testing.T, dir string) {
 	t.Helper()
 
-	contentDir := filepath.Join(dir, "src", "content")
+	pageDir := filepath.Join(dir, "src", "pages")
+	assetDir := filepath.Join(dir, "src", "assets")
+	staticDir := filepath.Join(dir, "src", "static")
 	layoutDir := filepath.Join(dir, "src", "layouts")
-	for _, dir := range []string{contentDir, layoutDir} {
+	for _, dir := range []string{pageDir, assetDir, staticDir, layoutDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatal(err)
 		}
@@ -458,7 +460,7 @@ func writeProjectSite(t *testing.T, dir string) {
 	if err := os.WriteFile(filepath.Join(layoutDir, "default.html"), []byte("<html><body>{{.Page.Content}}</body></html>"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(contentDir, "index.html"), []byte("<p>one</p>"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(pageDir, "index.html"), []byte("<p>one</p>"), 0644); err != nil {
 		t.Fatal(err)
 	}
 }

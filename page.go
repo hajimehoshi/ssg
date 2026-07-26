@@ -19,7 +19,7 @@ import (
 	"github.com/hajimehoshi/ssg/internal/htmlrewrite"
 )
 
-func generateHTMLs(outDir, inDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions, mode generationMode) error {
+func generateHTMLs(outDir, pageDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions, mode generationMode) error {
 	// templates maps each resolved layout path to its parsed template. Building
 	// it before concurrent generation lets the goroutines read it without
 	// locking.
@@ -57,8 +57,8 @@ func generateHTMLs(outDir, inDir, layoutDir string, siteMeta map[string]any, opt
 		return err
 	}
 
-	var contentPaths []string
-	if err := filepath.Walk(inDir, func(path string, info os.FileInfo, err error) error {
+	var pagePaths []string
+	if err := filepath.Walk(pageDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -68,20 +68,20 @@ func generateHTMLs(outDir, inDir, layoutDir string, siteMeta map[string]any, opt
 		if isIgnoredFile(path) {
 			return nil
 		}
-		rel, err := filepath.Rel(inDir, path)
+		rel, err := filepath.Rel(pageDir, path)
 		if err != nil {
 			return err
 		}
-		contentPaths = append(contentPaths, rel)
+		pagePaths = append(pagePaths, rel)
 		return nil
-	}); err != nil {
+	}); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 
 	var wg errgroup.Group
-	for _, path := range contentPaths {
+	for _, path := range pagePaths {
 		wg.Go(func() error {
-			return generateHTML(path, templates, outDir, inDir, layoutDir, siteMeta, options, mode)
+			return generateHTML(path, templates, outDir, pageDir, layoutDir, siteMeta, options, mode)
 		})
 	}
 	return wg.Wait()
@@ -109,8 +109,8 @@ type pageData struct {
 	Content template.HTML
 }
 
-// pagePath returns the site-root-absolute path of the content file at relPath,
-// which is relative to the content root. A trailing index.html is dropped so
+// pagePath returns the site-root-absolute path of the page file at relPath,
+// which is relative to the page root. A trailing index.html is dropped so
 // that the path denotes the directory the browser requests; any other .html
 // extension is dropped unless keepHTMLExtension is set.
 func pagePath(relPath string, keepHTMLExtension bool) string {
@@ -133,8 +133,8 @@ func pageURL(siteURL, path string) string {
 	return strings.TrimSuffix(siteURL, "/") + path
 }
 
-func generateHTML(path string, templates map[string]*template.Template, outDir, inDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions, mode generationMode) error {
-	inPath := filepath.Join(inDir, path)
+func generateHTML(path string, templates map[string]*template.Template, outDir, pageDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions, mode generationMode) error {
+	inPath := filepath.Join(pageDir, path)
 	outPath := filepath.Join(outDir, path)
 
 	content, err := os.ReadFile(inPath)
@@ -166,7 +166,7 @@ func generateHTML(path string, templates map[string]*template.Template, outDir, 
 			Name:         options.SiteName,
 			URL:          options.SiteURL,
 			Meta:         siteMeta,
-			resourceRoot: inDir,
+			resourceRoot: outDir,
 			mode:         mode,
 		},
 		Page: pageData{

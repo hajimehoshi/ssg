@@ -110,20 +110,22 @@ func TestGenerateRejectsInvalidSiteMetadata(t *testing.T) {
 
 func TestGenerateResourceVersionQuery(t *testing.T) {
 	dir := t.TempDir()
-	inDir := filepath.Join(dir, "src", "content")
+	pageDir := filepath.Join(dir, "src", "pages")
+	assetDir := filepath.Join(dir, "src", "assets")
+	staticDir := filepath.Join(dir, "src", "static")
 	layoutDir := filepath.Join(dir, "src", "layouts")
 	outDir := filepath.Join(dir, "public")
-	for _, path := range []string{inDir, layoutDir} {
+	for _, path := range []string{pageDir, assetDir, staticDir, layoutDir} {
 		if err := os.MkdirAll(path, 0755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for path, content := range map[string]string{
-		"index.html": `<p>hello</p>`,
-		"site.css":   `body { color: red; }`,
-		"unused.bin": `unused`,
+		filepath.Join(pageDir, "index.html"):   `<p>hello</p>`,
+		filepath.Join(assetDir, "site.css"):    `body { color: red; }`,
+		filepath.Join(staticDir, "unused.bin"): `unused`,
 	} {
-		if err := os.WriteFile(filepath.Join(inDir, path), []byte(content), 0644); err != nil {
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -164,10 +166,80 @@ func TestGenerateResourceVersionQuery(t *testing.T) {
 	}
 }
 
+func TestGenerateCopiesStaticFilesUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	writeProjectSite(t, dir)
+
+	const staticCSS = "/* Keep this comment. */\nbody { color: red; }\n"
+	if err := os.WriteFile(filepath.Join(dir, "src", "static", "site.css"), []byte(staticCSS), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "src", "static", "_headers"), []byte("headers"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ssg.Generate(&ssg.GenerateOptions{Dir: dir, SiteName: "Test"}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "public", "site.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != staticCSS {
+		t.Errorf("static file: got: %q, want: %q", got, staticCSS)
+	}
+	if content, err := os.ReadFile(filepath.Join(dir, "public", "_headers")); err != nil {
+		t.Error(err)
+	} else if got, want := string(content), "headers"; got != want {
+		t.Errorf("underscored static file: got: %q, want: %q", got, want)
+	}
+}
+
+func TestGenerateRejectsInvalidSourceTreeFile(t *testing.T) {
+	testCases := []struct {
+		Name string
+		Path string
+	}{
+		{
+			Name: "non-HTML page",
+			Path: filepath.Join("src", "pages", "data.json"),
+		},
+		{
+			Name: "unsupported asset",
+			Path: filepath.Join("src", "assets", "image.png"),
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeProjectSite(t, dir)
+			if err := os.WriteFile(filepath.Join(dir, tc.Path), []byte("invalid"), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := ssg.Generate(&ssg.GenerateOptions{Dir: dir, SiteName: "Test"}); err == nil {
+				t.Fatal("Generate succeeded with a file in the wrong source tree")
+			}
+		})
+	}
+}
+
+func TestGenerateRejectsOutputPathCollision(t *testing.T) {
+	dir := t.TempDir()
+	writeProjectSite(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "src", "static", "index.html"), []byte("static"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ssg.Generate(&ssg.GenerateOptions{Dir: dir, SiteName: "Test"}); err == nil {
+		t.Fatal("Generate succeeded with colliding page and static files")
+	}
+}
+
 func TestGenerateRejectsMissingResource(t *testing.T) {
 	dir := t.TempDir()
 	writeProjectSite(t, dir)
-	if err := os.WriteFile(filepath.Join(dir, "src", "content", "index.html"), []byte(`<img src="/missing.svg">`), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "src", "pages", "index.html"), []byte(`<img src="/missing.svg">`), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -197,7 +269,7 @@ p {
   display: block;
 }
 </style><p>one</p>`
-	if err := os.WriteFile(filepath.Join(dir, "src", "content", "index.html"), []byte(content), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "src", "pages", "index.html"), []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -266,7 +338,7 @@ window.parameterizedType = 6;
 	content := `<script type="text/javascript">
 window.loaded = 1;
 </script><p>one</p>`
-	if err := os.WriteFile(filepath.Join(dir, "src", "content", "index.html"), []byte(content), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "src", "pages", "index.html"), []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -316,11 +388,11 @@ func TestGenerateRejectsInvalidInlineJavaScript(t *testing.T) {
 
 func TestGenerateSelectsLayout(t *testing.T) {
 	dir := t.TempDir()
-	contentDir := filepath.Join(dir, "src", "content")
+	pageDir := filepath.Join(dir, "src", "pages")
 	layoutDir := filepath.Join(dir, "src", "layouts")
 	outputDir := filepath.Join(dir, "public")
 	for _, path := range []string{
-		filepath.Join(contentDir, "writings"),
+		filepath.Join(pageDir, "writings"),
 		filepath.Join(layoutDir, "writings"),
 	} {
 		if err := os.MkdirAll(path, 0755); err != nil {
@@ -328,11 +400,11 @@ func TestGenerateSelectsLayout(t *testing.T) {
 		}
 	}
 	for path, content := range map[string]string{
-		filepath.Join(contentDir, "index.html"): `<p>home</p>`,
-		filepath.Join(contentDir, "normalized.html"): `<script type="application/yaml">
+		filepath.Join(pageDir, "index.html"): `<p>home</p>`,
+		filepath.Join(pageDir, "normalized.html"): `<script type="application/yaml">
 _layout: writings/../default
 </script><p>normalized</p>`,
-		filepath.Join(contentDir, "writings", "index.html"): `<script type="application/yaml">
+		filepath.Join(pageDir, "writings", "index.html"): `<script type="application/yaml">
 _layout: writings/article
 </script><p>writings</p>`,
 		filepath.Join(layoutDir, "default.html"):             `<html><body><main>{{.Page.Content}}</main></body></html>`,
@@ -403,15 +475,15 @@ func TestGenerateRejectsInvalidLayout(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			dir := t.TempDir()
-			contentDir := filepath.Join(dir, "src", "content")
+			pageDir := filepath.Join(dir, "src", "pages")
 			layoutDir := filepath.Join(dir, "src", "layouts")
-			for _, path := range []string{contentDir, layoutDir} {
+			for _, path := range []string{pageDir, layoutDir} {
 				if err := os.MkdirAll(path, 0755); err != nil {
 					t.Fatal(err)
 				}
 			}
 			content := `<script type="application/yaml">_layout: ` + tc.Layout + `</script><p>hello</p>`
-			if err := os.WriteFile(filepath.Join(contentDir, "index.html"), []byte(content), 0644); err != nil {
+			if err := os.WriteFile(filepath.Join(pageDir, "index.html"), []byte(content), 0644); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.WriteFile(filepath.Join(layoutDir, "default.html"), []byte(`<html><body>{{.Page.Content}}</body></html>`), 0644); err != nil {
@@ -436,15 +508,15 @@ func TestGenerateRejectsInvalidLayout(t *testing.T) {
 
 func TestGenerateRejectsLayoutSymlinkOutsideLayoutDir(t *testing.T) {
 	dir := t.TempDir()
-	contentDir := filepath.Join(dir, "src", "content")
+	pageDir := filepath.Join(dir, "src", "pages")
 	layoutDir := filepath.Join(dir, "src", "layouts")
-	for _, path := range []string{contentDir, layoutDir} {
+	for _, path := range []string{pageDir, layoutDir} {
 		if err := os.MkdirAll(path, 0755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	content := `<script type="application/yaml">_layout: external</script><p>hello</p>`
-	if err := os.WriteFile(filepath.Join(contentDir, "index.html"), []byte(content), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(pageDir, "index.html"), []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
 	outsideDir := filepath.Join(dir, "src", "layouts-other")
