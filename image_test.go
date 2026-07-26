@@ -89,7 +89,7 @@ func TestGenerateInspectsLocalImages(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			layout := `<html><body>{{with .Site.Image ` + strconv.Quote(tc.Path) + `}}{{.MediaType}}|{{.Width}}|{{.Height}}{{end}}</body></html>`
+			layout := `<html><body>{{with imageMetadata ` + strconv.Quote(tc.Path) + `}}{{.MediaType}}|{{.Width}}|{{.Height}}{{end}}</body></html>`
 			if err := os.WriteFile(filepath.Join(dir, "src", "layouts", "default.html"), []byte(layout), 0644); err != nil {
 				t.Fatal(err)
 			}
@@ -266,7 +266,7 @@ func TestGenerateInspectsLocalImageSymlink(t *testing.T) {
 	if err := os.Symlink(outsidePath, filepath.Join(dir, "src", "static", "image.png")); err != nil {
 		t.Fatal(err)
 	}
-	layout := `<html><body>{{with .Site.Image "/image.png"}}{{.MediaType}}|{{.Width}}|{{.Height}}{{end}}</body></html>`
+	layout := `<html><body>{{with imageMetadata "/image.png"}}{{.MediaType}}|{{.Width}}|{{.Height}}{{end}}</body></html>`
 	if err := os.WriteFile(filepath.Join(dir, "src", "layouts", "default.html"), []byte(layout), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestGenerateInspectsLocalImageSymlink(t *testing.T) {
 func TestGenerateForServeIgnoresMissingLocalImage(t *testing.T) {
 	dir := t.TempDir()
 	writeProjectSite(t, dir)
-	layout := `<html><body>{{with .Site.Image "/missing.png"}}unexpected image{{else}}image unavailable{{end}}</body></html>`
+	layout := `<html><body>{{with imageMetadata "/missing.png"}}unexpected image{{else}}image unavailable{{end}}</body></html>`
 	if err := os.WriteFile(filepath.Join(dir, "src", "layouts", "default.html"), []byte(layout), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +313,7 @@ func TestGenerateForServeIgnoresMissingLocalImage(t *testing.T) {
 func writeImageLayout(t *testing.T, dir, imagePath string) {
 	t.Helper()
 
-	layout := `<html><body>{{with .Site.Image ` + strconv.Quote(imagePath) + `}}{{.MediaType}}{{end}}</body></html>`
+	layout := `<html><body>{{with imageMetadata ` + strconv.Quote(imagePath) + `}}{{.MediaType}}{{end}}</body></html>`
 	if err := os.WriteFile(filepath.Join(dir, "src", "layouts", "default.html"), []byte(layout), 0644); err != nil {
 		t.Fatal(err)
 	}

@@ -71,12 +71,12 @@ also be inherited from directory metadata.
 ## Local image metadata
 
 Templates can inspect a GIF, JPEG, PNG, or WebP image under `src/static` with
-`.Site.Image`. The argument is a canonical site-root-relative path using
+`imageMetadata`. The argument is a canonical site-root-relative path using
 forward slashes. The returned value has `MediaType`, `Width`, and `Height`
 fields.
 
 ```gotemplate
-{{with $image := .Site.Image "/images/share.png"}}
+{{with $image := imageMetadata "/images/share.png"}}
 <meta property="og:image:type" content="{{$image.MediaType}}">
 <meta property="og:image:width" content="{{$image.Width}}">
 <meta property="og:image:height" content="{{$image.Height}}">

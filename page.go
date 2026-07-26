@@ -35,7 +35,12 @@ func generatePages(outDir, pageDir, layoutDir string, options *GenerateOptions, 
 	// it before concurrent generation lets the goroutines read it without
 	// locking.
 	templates := map[string]*template.Template{}
-	sharedTemplates := template.New("")
+	var images imageCache
+	sharedTemplates := template.New("").Funcs(template.FuncMap{
+		"imageMetadata": func(path string) (*imageData, error) {
+			return images.get(outDir, path, mode)
+		},
+	})
 	var layoutPaths []string
 	if err := filepath.Walk(layoutDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -132,11 +137,10 @@ func generatePages(outDir, pageDir, layoutDir string, options *GenerateOptions, 
 		return err
 	}
 
-	var images imageCache
 	var wg errgroup.Group
 	for _, path := range pagePaths {
 		wg.Go(func() error {
-			return generatePage(path, directoryMetadata, templates, &images, outDir, pageDir, layoutDir, options, mode)
+			return generatePage(path, directoryMetadata, templates, outDir, pageDir, layoutDir, options, mode)
 		})
 	}
 	return wg.Wait()
@@ -144,16 +148,8 @@ func generatePages(outDir, pageDir, layoutDir string, options *GenerateOptions, 
 
 // siteData is the site-wide data available to templates as .Site.
 type siteData struct {
-	Name         string
-	URL          string
-	resourceRoot string
-	mode         generationMode
-	images       *imageCache
-}
-
-// Image returns metadata about the local image at path.
-func (s siteData) Image(path string) (*imageData, error) {
-	return s.images.get(s.resourceRoot, path, s.mode)
+	Name string
+	URL  string
 }
 
 // pageData is the per-page data available to templates as .Page.
@@ -188,7 +184,7 @@ func pageURL(siteURL, path string) string {
 	return strings.TrimSuffix(siteURL, "/") + path
 }
 
-func generatePage(sourcePath string, directoryMetadata map[string]map[string]any, templates map[string]*template.Template, images *imageCache, outDir, pageDir, layoutDir string, options *GenerateOptions, mode generationMode) error {
+func generatePage(sourcePath string, directoryMetadata map[string]map[string]any, templates map[string]*template.Template, outDir, pageDir, layoutDir string, options *GenerateOptions, mode generationMode) error {
 	inPath := filepath.Join(pageDir, sourcePath)
 	outputPath := pagepath.Output(sourcePath)
 	outPath := filepath.Join(outDir, outputPath)
@@ -235,11 +231,8 @@ func generatePage(sourcePath string, directoryMetadata map[string]map[string]any
 		Page pageData
 	}{
 		Site: siteData{
-			Name:         options.SiteName,
-			URL:          options.SiteURL,
-			resourceRoot: outDir,
-			mode:         mode,
-			images:       images,
+			Name: options.SiteName,
+			URL:  options.SiteURL,
 		},
 		Page: pageData{
 			Path:    urlPath,
