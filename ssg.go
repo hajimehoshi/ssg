@@ -47,11 +47,6 @@ func generate(options *GenerateOptions, mode generationMode) error {
 		return fmt.Errorf("ssg: SiteName must not be empty")
 	}
 
-	meta, err := loadSiteMetadata(options.metadataPath())
-	if err != nil {
-		return err
-	}
-
 	pageDir := options.pageDir()
 	assetDir := options.assetDir()
 	staticDir := options.staticDir()
@@ -69,7 +64,7 @@ func generate(options *GenerateOptions, mode generationMode) error {
 	if err := generateAssets(outputDir, assetDir); err != nil {
 		return err
 	}
-	if err := generatePages(outputDir, pageDir, layoutDir, meta, options, mode); err != nil {
+	if err := generatePages(outputDir, pageDir, layoutDir, options, mode); err != nil {
 		return err
 	}
 	return nil
@@ -93,10 +88,6 @@ func (o *GenerateOptions) staticDir() string {
 
 func (o *GenerateOptions) layoutDir() string {
 	return filepath.Join(o.sourceDir(), "layouts")
-}
-
-func (o *GenerateOptions) metadataPath() string {
-	return filepath.Join(o.sourceDir(), "meta.yaml")
 }
 
 func (o *GenerateOptions) outputDir() string {

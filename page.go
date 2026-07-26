@@ -30,7 +30,7 @@ var markdownConverter = goldmark.New(
 	goldmark.WithRendererOptions(goldmarkhtml.WithUnsafe()),
 )
 
-func generatePages(outDir, pageDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions, mode generationMode) error {
+func generatePages(outDir, pageDir, layoutDir string, options *GenerateOptions, mode generationMode) error {
 	// templates maps each normalized layout path to its parsed template. Building
 	// it before concurrent generation lets the goroutines read it without
 	// locking.
@@ -95,12 +95,28 @@ func generatePages(outDir, pageDir, layoutDir string, siteMeta map[string]any, o
 		templates[resolvedPath] = tmpl
 	}
 
+	directoryMetadata := map[string]map[string]any{}
 	var pagePaths []string
 	if err := filepath.Walk(pageDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() || !isPageExtension(filepath.Ext(path)) {
+		if info.IsDir() {
+			return nil
+		}
+		if filepath.Base(path) == directoryMetadataFilename {
+			meta, err := loadDirectoryMetadata(path)
+			if err != nil {
+				return err
+			}
+			rel, err := filepath.Rel(pageDir, filepath.Dir(path))
+			if err != nil {
+				return err
+			}
+			directoryMetadata[rel] = meta
+			return nil
+		}
+		if !isPageExtension(filepath.Ext(path)) {
 			return nil
 		}
 		if isIgnoredFile(path) {
@@ -120,7 +136,7 @@ func generatePages(outDir, pageDir, layoutDir string, siteMeta map[string]any, o
 	var wg errgroup.Group
 	for _, path := range pagePaths {
 		wg.Go(func() error {
-			return generatePage(path, templates, &images, outDir, pageDir, layoutDir, siteMeta, options, mode)
+			return generatePage(path, directoryMetadata, templates, &images, outDir, pageDir, layoutDir, options, mode)
 		})
 	}
 	return wg.Wait()
@@ -130,7 +146,6 @@ func generatePages(outDir, pageDir, layoutDir string, siteMeta map[string]any, o
 type siteData struct {
 	Name         string
 	URL          string
-	Meta         map[string]any
 	resourceRoot string
 	mode         generationMode
 	images       *imageCache
@@ -173,7 +188,7 @@ func pageURL(siteURL, path string) string {
 	return strings.TrimSuffix(siteURL, "/") + path
 }
 
-func generatePage(sourcePath string, templates map[string]*template.Template, images *imageCache, outDir, pageDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions, mode generationMode) error {
+func generatePage(sourcePath string, directoryMetadata map[string]map[string]any, templates map[string]*template.Template, images *imageCache, outDir, pageDir, layoutDir string, options *GenerateOptions, mode generationMode) error {
 	inPath := filepath.Join(pageDir, sourcePath)
 	outputPath := pagepath.Output(sourcePath)
 	outPath := filepath.Join(outDir, outputPath)
@@ -195,6 +210,7 @@ func generatePage(sourcePath string, templates map[string]*template.Template, im
 	if err != nil {
 		return fmt.Errorf("ssg: extracting metadata in %s failed: %w", inPath, err)
 	}
+	meta = mergePageMetadata(directoryMetadata, sourcePath, meta)
 	if filepath.Ext(sourcePath) == ".md" {
 		var converted bytes.Buffer
 		if err := markdownConverter.Convert(content, &converted); err != nil {
@@ -221,7 +237,6 @@ func generatePage(sourcePath string, templates map[string]*template.Template, im
 		Site: siteData{
 			Name:         options.SiteName,
 			URL:          options.SiteURL,
-			Meta:         siteMeta,
 			resourceRoot: outDir,
 			mode:         mode,
 			images:       images,

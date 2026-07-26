@@ -10,8 +10,7 @@ The source tree separates files by how they are published:
   rewritten, and minified.
 - `src/assets` contains CSS and JavaScript files that are minified.
 - `src/static` contains files that are copied to `public` byte-for-byte.
-- `src/layouts` contains HTML layouts and shared templates, and `src/meta.yaml`
-  contains site-wide metadata.
+- `src/layouts` contains HTML layouts and shared templates.
 
 Each publishing directory maps directly to the root of `public`. For example,
 `src/pages/about.md`, `src/assets/css/site.css`, and
@@ -50,6 +49,24 @@ title: About
 
 # About
 ```
+
+## Page metadata
+
+An `_meta.yaml` file provides default metadata for every page in its directory
+and descendant directories. Metadata from a closer directory overrides values
+from its ancestors, and a page's own metadata overrides all directory defaults.
+The merge operates on top-level keys, replacing mapping and sequence values as
+whole values. The result is available to layouts through `.Page.Meta`.
+
+For example, `src/pages/ja/_meta.yaml` can set the language for every page under
+`src/pages/ja`:
+
+```yaml
+language: ja
+```
+
+`src/pages/_meta.yaml` provides defaults for every page. The `_layout` value can
+also be inherited from directory metadata.
 
 ## Local image metadata
 

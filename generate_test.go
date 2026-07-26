@@ -14,16 +14,26 @@ import (
 	"github.com/hajimehoshi/ssg"
 )
 
-func TestGenerateSiteMetadata(t *testing.T) {
+func TestGeneratePageMetadata(t *testing.T) {
 	dir := t.TempDir()
 	writeProjectSite(t, dir)
 
-	layout := `<html><body>{{.Site.Name}}|{{.Site.URL}}|{{index .Site.Meta "title"}}|{{index (index .Site.Meta "author") "name"}}|{{index .Site.Meta "draft"}}|{{.Page.Content}}</body></html>`
+	layout := `<html><body>{{.Site.Name}}|{{.Site.URL}}|{{index .Page.Meta "language"}}|{{index .Page.Meta "image"}}|{{index .Page.Meta "title"}}|{{.Page.Content}}</body></html>`
 	if err := os.WriteFile(filepath.Join(dir, "src", "layouts", "default.html"), []byte(layout), 0644); err != nil {
 		t.Fatal(err)
 	}
-	meta := "title: Site title\nauthor:\n  name: Hajime\ndraft: true\n"
-	if err := os.WriteFile(filepath.Join(dir, "src", "meta.yaml"), []byte(meta), 0644); err != nil {
+	pageDir := filepath.Join(dir, "src", "pages")
+	if err := os.WriteFile(filepath.Join(pageDir, "_meta.yaml"), []byte("language: en\nimage: /default.png\ntitle: Default title\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	jaDir := filepath.Join(pageDir, "ja")
+	if err := os.MkdirAll(jaDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(jaDir, "_meta.yaml"), []byte("language: ja\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(jaDir, "article.md"), []byte("---\ntitle: Article title\n---\narticle\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -34,20 +44,25 @@ func TestGenerateSiteMetadata(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	content, err := os.ReadFile(filepath.Join(dir, "public", "index.html"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := string(content), "Test site|https://example.com|Site title|Hajime|true|<p>one</p>"; !strings.Contains(got, want) {
-		t.Errorf("generated HTML: got: %q, want content containing: %q", got, want)
+	for path, want := range map[string]string{
+		"index.html":                        "Test site|https://example.com|en|/default.png|Default title|<p>one</p>",
+		filepath.Join("ja", "article.html"): "Test site|https://example.com|ja|/default.png|Article title|<p>article</p>",
+	} {
+		content, err := os.ReadFile(filepath.Join(dir, "public", path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := string(content); !strings.Contains(got, want) {
+			t.Errorf("generated HTML: got: %q, want content containing: %q", got, want)
+		}
 	}
 }
 
-func TestGenerateWithoutSiteMetadata(t *testing.T) {
+func TestGenerateWithoutPageMetadata(t *testing.T) {
 	dir := t.TempDir()
 	writeProjectSite(t, dir)
 
-	layout := `<html><body>{{if .Site.Meta}}unexpected metadata{{else}}empty metadata{{end}}</body></html>`
+	layout := `<html><body>{{if .Page.Meta}}unexpected metadata{{else}}empty metadata{{end}}</body></html>`
 	if err := os.WriteFile(filepath.Join(dir, "src", "layouts", "default.html"), []byte(layout), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +139,7 @@ title: Markdown page
 	}
 }
 
-func TestGenerateRejectsInvalidSiteMetadata(t *testing.T) {
+func TestGenerateRejectsInvalidDirectoryMetadata(t *testing.T) {
 	testCases := []struct {
 		Name string
 		Meta string
@@ -150,7 +165,7 @@ func TestGenerateRejectsInvalidSiteMetadata(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			dir := t.TempDir()
 			writeProjectSite(t, dir)
-			if err := os.WriteFile(filepath.Join(dir, "src", "meta.yaml"), []byte(tc.Meta), 0644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, "src", "pages", "_meta.yaml"), []byte(tc.Meta), 0644); err != nil {
 				t.Fatal(err)
 			}
 
@@ -159,7 +174,7 @@ func TestGenerateRejectsInvalidSiteMetadata(t *testing.T) {
 				SiteName: "Test",
 			})
 			if err == nil {
-				t.Error("Generate succeeded with invalid site metadata")
+				t.Error("Generate succeeded with invalid directory metadata")
 			}
 		})
 	}
@@ -473,9 +488,8 @@ func TestGenerateSelectsLayout(t *testing.T) {
 		filepath.Join(pageDir, "normalized.html"): `<script type="application/yaml">
 _layout: writings/../default
 </script><p>normalized</p>`,
-		filepath.Join(pageDir, "writings", "index.html"): `<script type="application/yaml">
-_layout: writings/article
-</script><p>writings</p>`,
+		filepath.Join(pageDir, "writings", "_meta.yaml"):     `_layout: writings/article`,
+		filepath.Join(pageDir, "writings", "index.html"):     `<p>writings</p>`,
 		filepath.Join(layoutDir, "default.html"):             `<html><body><main>{{.Page.Content}}</main></body></html>`,
 		filepath.Join(layoutDir, "writings", "article.html"): `<html><body><article>{{if index .Page.Meta "_layout"}}unexpected{{end}}{{.Page.Content}}</article></body></html>`,
 		filepath.Join(layoutDir, "ignored.txt"):              `not a layout`,

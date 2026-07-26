@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -18,7 +20,9 @@ import (
 // https://infra.spec.whatwg.org/#ascii-whitespace
 var asciiWhitespace = "\t\n\f\r "
 
-func loadSiteMetadata(path string) (map[string]any, error) {
+const directoryMetadataFilename = "_meta.yaml"
+
+func loadDirectoryMetadata(path string) (map[string]any, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -29,17 +33,46 @@ func loadSiteMetadata(path string) (map[string]any, error) {
 
 	var document yaml.Node
 	if err := yaml.Unmarshal(data, &document); err != nil {
-		return nil, fmt.Errorf("ssg: parsing site metadata in %s failed: %w", path, err)
+		return nil, fmt.Errorf("ssg: parsing metadata in %s failed: %w", path, err)
 	}
 	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
-		return nil, fmt.Errorf("ssg: site metadata in %s must be a mapping", path)
+		return nil, fmt.Errorf("ssg: metadata in %s must be a mapping", path)
 	}
 
 	meta := map[string]any{}
 	if err := document.Content[0].Decode(&meta); err != nil {
-		return nil, fmt.Errorf("ssg: parsing site metadata in %s failed: %w", path, err)
+		return nil, fmt.Errorf("ssg: parsing metadata in %s failed: %w", path, err)
 	}
 	return meta, nil
+}
+
+func mergePageMetadata(directoryMetadata map[string]map[string]any, sourcePath string, frontMatter map[string]any) map[string]any {
+	var directories []string
+	for dir := filepath.Dir(sourcePath); ; dir = filepath.Dir(dir) {
+		directories = append(directories, dir)
+		if dir == "." {
+			break
+		}
+	}
+
+	var meta map[string]any
+	for i := len(directories) - 1; i >= 0; i-- {
+		directoryMeta := directoryMetadata[directories[i]]
+		if len(directoryMeta) == 0 {
+			continue
+		}
+		if meta == nil {
+			meta = make(map[string]any)
+		}
+		maps.Copy(meta, directoryMeta)
+	}
+	if len(frontMatter) > 0 {
+		if meta == nil {
+			meta = make(map[string]any)
+		}
+		maps.Copy(meta, frontMatter)
+	}
+	return meta
 }
 
 // extractMetadataFromHTML parses the metadata data block at the beginning of

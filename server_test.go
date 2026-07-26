@@ -224,10 +224,10 @@ func TestServeSite(t *testing.T) {
 	l.Close()
 }
 
-func TestServeSiteRegeneratesForSiteMetadataChange(t *testing.T) {
+func TestServeSiteRegeneratesForPageMetadataChange(t *testing.T) {
 	dir := t.TempDir()
 	writeProjectSite(t, dir)
-	layout := `<html><body>{{with index .Site.Meta "message"}}{{.}}{{else}}missing metadata{{end}}</body></html>`
+	layout := `<html><body>{{with index .Page.Meta "message"}}{{.}}{{else}}missing metadata{{end}}</body></html>`
 	if err := os.WriteFile(filepath.Join(dir, "src", "layouts", "default.html"), []byte(layout), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -248,23 +248,23 @@ func TestServeSiteRegeneratesForSiteMetadataChange(t *testing.T) {
 
 	url := "http://" + addr + "/"
 	waitForHTTPContent(t, url, "missing metadata")
-	metadataPath := filepath.Join(dir, "src", "meta.yaml")
+	metadataPath := filepath.Join(dir, "src", "pages", "_meta.yaml")
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		if err := os.WriteFile(metadataPath, []byte("message: site metadata\n"), 0644); err != nil {
+		if err := os.WriteFile(metadataPath, []byte("message: page metadata\n"), 0644); err != nil {
 			t.Fatal(err)
 		}
 		resp, err := http.Get(url)
 		if err == nil {
 			body, readErr := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			if readErr == nil && resp.StatusCode == http.StatusOK && strings.Contains(string(body), "site metadata") {
+			if readErr == nil && resp.StatusCode == http.StatusOK && strings.Contains(string(body), "page metadata") {
 				break
 			}
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if got := getHTTPContent(t, url); !strings.Contains(got, "site metadata") {
+	if got := getHTTPContent(t, url); !strings.Contains(got, "page metadata") {
 		t.Fatalf("site was not regenerated after %s changed: %q", metadataPath, got)
 	}
 
