@@ -460,6 +460,10 @@ func TestGenerateRejectsInvalidLayout(t *testing.T) {
 			OutsidePath: filepath.Join("src", "article.html"),
 		},
 		{
+			Name:   "parent traversal back into layouts",
+			Layout: "../layouts/default",
+		},
+		{
 			Name:   "absolute",
 			Layout: "/article",
 		},
@@ -506,7 +510,7 @@ func TestGenerateRejectsInvalidLayout(t *testing.T) {
 	}
 }
 
-func TestGenerateRejectsLayoutSymlinkOutsideLayoutDir(t *testing.T) {
+func TestGenerateAllowsLayoutSymlinkOutsideLayoutDir(t *testing.T) {
 	dir := t.TempDir()
 	pageDir := filepath.Join(dir, "src", "pages")
 	layoutDir := filepath.Join(dir, "src", "layouts")
@@ -531,11 +535,17 @@ func TestGenerateRejectsLayoutSymlinkOutsideLayoutDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := ssg.Generate(&ssg.GenerateOptions{
+	if err := ssg.Generate(&ssg.GenerateOptions{
 		Dir:      dir,
 		SiteName: "Test",
-	})
-	if err == nil {
-		t.Error("Generate succeeded with a layout symlink outside the layouts directory")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	generated, err := os.ReadFile(filepath.Join(dir, "public", "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(generated), "<p>hello</p>") {
+		t.Errorf("generated page does not contain the page content: %q", generated)
 	}
 }

@@ -20,7 +20,7 @@ import (
 )
 
 func generateHTMLs(outDir, pageDir, layoutDir string, siteMeta map[string]any, options *GenerateOptions, mode generationMode) error {
-	// templates maps each resolved layout path to its parsed template. Building
+	// templates maps each normalized layout path to its parsed template. Building
 	// it before concurrent generation lets the goroutines read it without
 	// locking.
 	templates := map[string]*template.Template{}
@@ -241,6 +241,9 @@ func consumeLayoutPath(meta map[string]any, contentPath, layoutDir string) (stri
 	if strings.Contains(name, `\`) {
 		return "", fmt.Errorf("ssg: layout path %q for %s must use forward slashes", name, contentPath)
 	}
+	if strings.HasPrefix(name, "../") {
+		return "", fmt.Errorf("ssg: layout path %q for %s must not start with ../", name, contentPath)
+	}
 	namePath := filepath.FromSlash(name)
 	if filepath.IsAbs(namePath) {
 		return "", fmt.Errorf("ssg: layout path %q for %s must be relative", name, contentPath)
@@ -269,18 +272,10 @@ func resolveLayoutPath(layoutDir, namePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	resolvedLayoutDir, err := filepath.EvalSymlinks(absLayoutDir)
-	if err != nil {
-		return "", err
-	}
-	resolvedCandidate, err := filepath.EvalSymlinks(candidate)
-	if err != nil {
-		return "", err
-	}
-	if !strings.HasPrefix(resolvedCandidate, withTrailingSeparator(resolvedLayoutDir)) {
+	if !strings.HasPrefix(candidate, withTrailingSeparator(absLayoutDir)) {
 		return "", errLayoutOutsideDir
 	}
-	return resolvedCandidate, nil
+	return candidate, nil
 }
 
 func withTrailingSeparator(path string) string {
