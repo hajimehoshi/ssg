@@ -89,9 +89,16 @@ func generateHTMLs(outDir, inDir, layoutDir string, siteMeta map[string]any, opt
 
 // siteData is the site-wide data available to templates as .Site.
 type siteData struct {
-	Name string
-	URL  string
-	Meta map[string]any
+	Name         string
+	URL          string
+	Meta         map[string]any
+	resourceRoot string
+	mode         generationMode
+}
+
+// Image returns metadata about the local image at path.
+func (s siteData) Image(path string) (*imageData, error) {
+	return inspectImage(s.resourceRoot, path, s.mode)
 }
 
 // pageData is the per-page data available to templates as .Page.
@@ -156,9 +163,11 @@ func generateHTML(path string, templates map[string]*template.Template, outDir, 
 		Page pageData
 	}{
 		Site: siteData{
-			Name: options.SiteName,
-			URL:  options.SiteURL,
-			Meta: siteMeta,
+			Name:         options.SiteName,
+			URL:          options.SiteURL,
+			Meta:         siteMeta,
+			resourceRoot: inDir,
+			mode:         mode,
 		},
 		Page: pageData{
 			Path:    urlPath,

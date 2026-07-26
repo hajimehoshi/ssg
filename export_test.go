@@ -26,3 +26,7 @@ func PagePath(relPath string, keepHTMLExtension bool) string {
 func PageURL(siteURL, path string) string {
 	return pageURL(siteURL, path)
 }
+
+func GenerateForServe(options *GenerateOptions) error {
+	return generate(options, generationModeServe)
+}
