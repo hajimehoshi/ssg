@@ -509,6 +509,50 @@ _layout: writings/article
 	}
 }
 
+func TestGenerateIncludesSharedLayoutTemplate(t *testing.T) {
+	dir := t.TempDir()
+	pageDir := filepath.Join(dir, "src", "pages")
+	layoutDir := filepath.Join(dir, "src", "layouts")
+	for _, path := range []string{pageDir, layoutDir} {
+		if err := os.MkdirAll(path, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for path, content := range map[string]string{
+		filepath.Join(pageDir, "index.html"): `<script type="application/yaml">
+_layout: home
+</script><p>home</p>`,
+		filepath.Join(pageDir, "about.html"):      `<p>about</p>`,
+		filepath.Join(layoutDir, "#ignored.html"): `{{`,
+		filepath.Join(layoutDir, "_base.html"):    `<html><body><main>{{template "main" .}}</main></body></html>`,
+		filepath.Join(layoutDir, "home.html"):     `{{define "main"}}{{.Page.Content}}{{end}}{{template "_base.html" .}}`,
+		filepath.Join(layoutDir, "default.html"):  `{{define "main"}}<article>{{.Page.Content}}</article>{{end}}{{template "_base.html" .}}`,
+	} {
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := ssg.Generate(&ssg.GenerateOptions{
+		Dir:      dir,
+		SiteName: "Test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]string{
+		"index.html": `<main><p>home</p></main>`,
+		"about.html": `<main><article><p>about</p></article></main>`,
+	} {
+		content, err := os.ReadFile(filepath.Join(dir, "public", path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(content), want) {
+			t.Errorf("%s: got: %q, want content containing: %q", path, content, want)
+		}
+	}
+}
+
 func TestGenerateRejectsInvalidLayout(t *testing.T) {
 	testCases := []struct {
 		Name        string

@@ -35,6 +35,8 @@ func generatePages(outDir, pageDir, layoutDir string, siteMeta map[string]any, o
 	// it before concurrent generation lets the goroutines read it without
 	// locking.
 	templates := map[string]*template.Template{}
+	sharedTemplates := template.New("")
+	var layoutPaths []string
 	if err := filepath.Walk(layoutDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -42,6 +44,30 @@ func generatePages(outDir, pageDir, layoutDir string, siteMeta map[string]any, o
 		if info.IsDir() || filepath.Ext(path) != ".html" {
 			return nil
 		}
+		isSharedTemplate := strings.HasPrefix(filepath.Base(path), "_")
+		if isIgnoredFile(path) && !isSharedTemplate {
+			return nil
+		}
+		if !isSharedTemplate {
+			layoutPaths = append(layoutPaths, path)
+			return nil
+		}
+		rel, err := filepath.Rel(layoutDir, path)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if _, err := sharedTemplates.New(filepath.ToSlash(rel)).Parse(string(data)); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	for _, path := range layoutPaths {
 		rel, err := filepath.Rel(layoutDir, path)
 		if err != nil {
 			return err
@@ -49,7 +75,7 @@ func generatePages(outDir, pageDir, layoutDir string, siteMeta map[string]any, o
 		namePath := strings.TrimSuffix(rel, ".html")
 		resolvedPath, err := resolveLayoutPath(layoutDir, namePath)
 		if errors.Is(err, errLayoutOutsideDir) || errors.Is(err, os.ErrNotExist) {
-			return nil
+			continue
 		}
 		if err != nil {
 			return err
@@ -58,14 +84,15 @@ func generatePages(outDir, pageDir, layoutDir string, siteMeta map[string]any, o
 		if err != nil {
 			return err
 		}
-		tmpl, err := template.New(filepath.Base(path)).Parse(string(data))
+		tmpl, err := sharedTemplates.Clone()
+		if err != nil {
+			return err
+		}
+		tmpl, err = tmpl.New(filepath.Base(path)).Parse(string(data))
 		if err != nil {
 			return err
 		}
 		templates[resolvedPath] = tmpl
-		return nil
-	}); err != nil {
-		return err
 	}
 
 	var pagePaths []string

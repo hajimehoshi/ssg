@@ -10,14 +10,27 @@ The source tree separates files by how they are published:
   rewritten, and minified.
 - `src/assets` contains CSS and JavaScript files that are minified.
 - `src/static` contains files that are copied to `public` byte-for-byte.
-- `src/layouts` contains HTML layouts, and `src/meta.yaml` contains site-wide
-  metadata.
+- `src/layouts` contains HTML layouts and shared templates, and `src/meta.yaml`
+  contains site-wide metadata.
 
 Each publishing directory maps directly to the root of `public`. For example,
 `src/pages/about.md`, `src/assets/css/site.css`, and
 `src/static/images/logo.png` produce `public/about.html`,
 `public/css/site.css`, and `public/images/logo.png`, respectively. Generation
 fails if multiple source files map to the same output path.
+
+## Layout templates
+
+HTML files in `src/layouts` whose names begin with `_` are shared Go templates
+available to every layout. They are not selectable as layouts. A layout can
+render a shared template with the `template` action.
+
+```gotemplate
+{{template "_base.html" .}}
+```
+
+Shared templates in nested directories use their slash-separated path relative
+to `src/layouts` as their template name.
 
 ## Markdown pages
 
