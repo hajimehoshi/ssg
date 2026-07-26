@@ -50,6 +50,16 @@ title: About
 # About
 ```
 
+## Content title
+
+`.Page.ContentTitle` is the text of the first `h1` in the rendered page
+content, including text inside nested markup. It is empty when the content has
+no `h1`. A layout can use it while retaining control over title policy:
+
+```gotemplate
+<title>{{with .Page.ContentTitle}}{{.}} – {{end}}{{.Site.Name}}</title>
+```
+
 ## Page metadata
 
 An `_meta.yaml` file provides default metadata for every page in its directory

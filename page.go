@@ -154,10 +154,11 @@ type siteData struct {
 
 // pageData is the per-page data available to templates as .Page.
 type pageData struct {
-	Path    string
-	URL     string
-	Meta    map[string]any
-	Content template.HTML
+	Path         string
+	URL          string
+	Meta         map[string]any
+	Content      template.HTML
+	ContentTitle string
 }
 
 // pagePath returns the site-root-absolute path of the generated page file at
@@ -214,6 +215,10 @@ func generatePage(sourcePath string, directoryMetadata map[string]map[string]any
 		}
 		content = converted.Bytes()
 	}
+	title, err := contentTitle(content)
+	if err != nil {
+		return fmt.Errorf("ssg: extracting content title in %s failed: %w", inPath, err)
+	}
 	layoutPath, err := consumeLayoutPath(meta, sourcePath, layoutDir)
 	if err != nil {
 		return err
@@ -235,10 +240,11 @@ func generatePage(sourcePath string, directoryMetadata map[string]map[string]any
 			URL:  options.SiteURL,
 		},
 		Page: pageData{
-			Path:    urlPath,
-			URL:     pageURL(options.SiteURL, urlPath),
-			Meta:    meta,
-			Content: template.HTML(content),
+			Path:         urlPath,
+			URL:          pageURL(options.SiteURL, urlPath),
+			Meta:         meta,
+			Content:      template.HTML(content),
+			ContentTitle: title,
 		},
 	}); err != nil {
 		return err
@@ -248,8 +254,6 @@ func generatePage(sourcePath string, directoryMetadata map[string]map[string]any
 	if err != nil {
 		return err
 	}
-
-	htmlrewrite.SetMissingTitle(node, options.SiteName)
 
 	missingResourceMode := htmlrewrite.ErrorOnMissingResource
 	if mode == generationModeServe {
