@@ -5,8 +5,8 @@ package htmlrewrite
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/base32"
-	"hash/fnv"
 	"io"
 	"os"
 	"strings"
@@ -19,7 +19,7 @@ func fileHash(path string) (string, error) {
 	}
 	defer f.Close()
 
-	h := fnv.New128a()
+	h := sha256.New()
 	if _, err := io.Copy(h, bufio.NewReader(f)); err != nil {
 		return "", err
 	}
